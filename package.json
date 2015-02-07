@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "An extended version of the `type` Unix utility.",
   "private": false,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "os": [
     "darwin",
     "linux"
@@ -21,8 +21,7 @@
   },
   "scripts": {
     "test": "make test",
-    "install": "\"$npm_package_bin_typex\" -i",
-    "uninstall": "\"$npm_package_bin_typex\" -u"
+    "install": "printf '%s\\n\\n' \"IMPORTANT: To install sourcing for supported shells, run typex -i\""
   },
   "keywords": [
     "type",

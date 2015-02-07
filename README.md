@@ -61,7 +61,7 @@ With [node.js](http://nodejs.org/) installed, install via the [npm registry](htt
 
 	npm install typex -g
 
-During installation, `typex -i` is executed, which adds sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
+After installation, run `typex -i` to adds sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
 To remove these sourcing commands later, run `typex -u`.
 
 <!-- DO NOT EDIT: This chapter is updated by `make update-readme/release`. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
@@ -226,9 +226,12 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **v0.1.2** (2015-02-07):
+  * Fix: sourcing no longer auto-installed/-removed on package installation - removed due to permission headaches; users must now run typex -i manually after installation.
+
 * **v0.1.1** (2015-02-07):
-  * fix: --version reported incorrect version number
-  * temp. fix: installation of sourcing with -i doesn't report error in case of failure so as not to prevent installation of the npm package altogether.
+  * Fix: --version reported incorrect version number.
+  * Temp. fix: installation of sourcing with -i doesn't report error in case of failure so as not to prevent installation of the npm package altogether.
 
 * **v0.1.0** (2015-02-07):
-  * initial release
+  * Initial release.
