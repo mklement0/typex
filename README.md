@@ -61,7 +61,7 @@ With [node.js](http://nodejs.org/) installed, install via the [npm registry](htt
 
 	npm install typex -g
 
-After installation, run `typex -i` to adds sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
+After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
 To remove these sourcing commands later, run `typex -u`.
 
 <!-- DO NOT EDIT: This chapter is updated by `make update-readme/release`. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
