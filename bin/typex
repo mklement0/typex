@@ -211,7 +211,7 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
             (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' already present in '$initFile'; nothing to do.)"
         else
           # Append line to file.
-          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "ERROR: Failed to create initialization file '$initFile'." >&2; return 1; }
+          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "WARNING: Failed to create initialization file '$initFile'. If this is happening during installation of ${scriptFileAbsPath##*/} itself, try running ${scriptFileAbsPath##*/} -i later." >&2; return 1; }
           ed -s "$initFile" <<EOF # ed script: append an empty line, followed by the sourcing command; '.' terminates the text to append, 'w' saves the file.
 a
 
@@ -283,7 +283,6 @@ EOF
 
     if [[ "$1" == '--help' || "$1" == '-h' ]]; then
       cat <<EOF
-
 SYNOPSIS
   $thisFuncName [-p] [-V] [-v] name ...
   $thisFuncName -i|-u
@@ -413,7 +412,7 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.2.0"; echo "$thisFuncName version ${ver#v}"; exit 0; }
+    [[ $1 == '--version' ]] && { ver="v0.1.1"; echo "$thisFuncName version ${ver#v}"; exit 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
@@ -449,7 +448,7 @@ EOF
         # !! We must *explicitly* pass the following information:
         #   - whether this script is being sourced (nested functions in ksh don't see their parents' local variables).
         #   - this script's absolute path, as determining it inside a *nested* function doesn't work reliably in zsh (as of 5.0.5).      
-        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose || return
+        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose # !! we do NOT error out here, because installation of sourcing also happens during npm package installation, and an error would prevent installation altogether.
       done
       (( install )) && command printf '%s\n' 'Open a new shell tab or window for sourcing to take effect.'
       return 0      
