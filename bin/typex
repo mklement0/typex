@@ -413,7 +413,7 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.1.0"; echo "$thisFuncName version ${ver#v}"; exit 0; }
+    [[ $1 == '--version' ]] && { ver="v0.2.0"; echo "$thisFuncName version ${ver#v}"; exit 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
