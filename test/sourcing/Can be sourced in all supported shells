@@ -1,0 +1,5 @@
+#!/usr/bin/env shall -l bash,ksh,zsh
+
+PATH="../../bin:$PATH"
+
+. typex while || exit

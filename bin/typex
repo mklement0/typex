@@ -1,0 +1,728 @@
+#!/usr/bin/env bash
+
+# NOTE: This script works best when sourced, otherwise the current shell's aliases, keywords, and shell functions can't be detected.
+#       **Platforms supported in principle**: darwin, linux, freebsd
+#         Possibly others, but the issue is that non-POSIX features of utilities such as `grep` and `file` are used.
+#         Also, note that bash is NOT preinstalled on FreeBSD.
+#       **Shells that support sourcing this script: BASH, KSH, ZSH** - ENSURE CROSS-SHELL/PLATFORM COMPATIBILITY WHEN MAKING CHANGES:
+#           * Use `typeset` instead of `local` and `function someName { ... }` to ensure that ksh's variables are truly local.
+#           * Account for variations in syntax of builtins are taken into account and/or that what is an external command in one shell may be a builtin in another (e.g., `which`)
+#           * Account for platform-specific variations in syntax of executables (GNU vs. BSD; e.g., `stat`).
+#       **Avoid polluting the global namespace*, since this script will be sourced:
+#           * Prefix all *auxiliary* function names with '__typex_' (sadly, they are in the global namespace even if *nested* in other functions).
+#           * Avoid shell-global variables if possible; otherwise, also prefix them with '__typex_'.
+#       Executing this script *directly* (which will run in bash) is still *somewhat* useful: it finds *executable files*, but NOT aliases, functions, builtins - a warning to that effect is printed.
+
+# -------- BEGIN: POSIX SYNTAX ONLY
+# !! The purpose of this block is to determine, if this script is being *sourced*, whether the sourcing shell is a *supported shell* and *fail gracefully, if not*.
+# !! Thus, the code in this block most execute in [mostly] POSIX-features-only shells (e.g., dash) too.
+# !! Therefore, 
+# !!   - only POSIX syntax is used, in particular: POSIX-style function declarations (e.g., foo() rather than function foo)
+# !!   - NO variables at all, because - due to lack of local variables in POSIX shells - they'd end up in the global namespace.
+
+# IF SOURCED: is the current shell supported?
+__typex_isSupportedShell()
+{
+  [ -n "$BASH_VERSION" ] && return 0  # !! On platforms where 'sh' is symlinked to bash or virtually identical to bash (OSX), sourcing will therefore succeed from 'sh' as well - CAVEAT: bash invoked as 'sh' behave slightly differently; notably: process substitution doesn't work.
+  [ -n "$KSH_VERSION" ] && return 0
+  [ -n "$ZSH_VERSION" ] && return 0
+  return 1
+}
+# IF NOT SOURCED: is the *parent* shell (i.e., the one that *invoked* this script) supported?
+# Note: this function isn't strictly needed up here, but defined here to keep all information about what shells are supported in close proximity.
+__typex_isParentSupportedShell()
+{
+  # Examine the basename of the *parent* process.
+  # !! OSX prepends "-" to login shells (e.g., "-bash"), so that must be stripped away.
+  case "$(command basename -- "$(command ps -o comm= $PPID | command sed 's/^-//')")" in
+    bash|ksh|zsh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# If this script is *sourced*, abort, if the *current* shell is not supported.
+# (If it isn't sourced - i.e., executed directly - it is by definition run by a supported shell, via the shebang line: bash)
+# FOR UNSUPPORTED SHELLS, EXECUTION ENDS HERE.
+__typex_isSupportedShell || { printf '%s\n' "ERROR: This script can only be sourced in bash, ksh, or zsh -- $(command basename "$(ps -o comm= $$)") is not supported." >&2; return 2; }
+
+# -------- END: POSIX SYNTAX ONLY
+
+
+# Store the absolute path of this script in a SHELL-GLOBAL variable.
+# Note: This is necessary, because determining the originating script later, from the already-sourced typex() function, won't work in *nested* functions in zsh (as of 5.0.5).
+[ -n "$BASH_SOURCE" ] && __typex_scriptpath=$BASH_SOURCE
+[ -n "$KSH_VERSION" ] && __typex_scriptpath=${.sh.file}
+[ -n "$ZSH_VERSION" ] && __typex_scriptpath=${(%):-%x}
+# Ensure that the script path is absolute (not required for ksh, where ${.sh.file} always reports an absolute path).
+[ -n "$KSH_VERSION" ] || __typex_scriptpath=$(cd "$(command dirname -- "$__typex_scriptpath")" && command printf '%s' "${PWD%/}/")$(command basename -- "$__typex_scriptpath")
+
+
+# --- Main function to be sourced.
+function typex  # !! Note the non-POSIX function syntax to ensure that ksh variables declared with `typeset` are *local* variables.
+{ 
+
+    # ---- helper functions
+    # SYNOPSIS
+    #   __typex_rreadlinkchain symLink
+    # DESCRIPTION
+    #  Recursive readlink: prints the CHAIN OF SYMLINKS from the input
+    #  file to its ultimate target, one full path at a time.
+    #  Only the ultimate target's path is canonical, though.
+    #  Each path is output on a line of its own.
+    # EXAMPLE
+    #     # Print the ultimate target of the `git` symlink in the $PATH.
+    #   rreadlinkchain  "$(which git)"
+    # THANKS
+    #   http://stackoverflow.com/a/1116890/45375
+    function __typex_rreadlinkchain { ( # execute in *subshell* to localize the effect of `cd`
+
+      command typeset target=$1 targetDir= targetName=
+      
+      # !! Since this function may run in a sourced script we guard against potentially overridden commands
+      # !! by explicitly undefining any aliases or shell functions with the names of commands we're using 
+      # !! in this function; it's OK to do that, since this function runs in a subshell.
+      # !! Note that the differing behavior of `command` and `builtin` across shells makes this the simplest solution.
+      unalias cd pwd readlink dirname basename printf 2>/dev/null
+      unset -f cd pwd readlink dirname basename printf 2>/dev/null
+
+      while :; do
+          # Unless the file is a symlink OR exists, we report an error - note that using `-e` with a symlink reports the *target*'s existence, not the symlink's.
+        [[ -L $target || -e $target ]] || { printf '%s\n' "typex: ERROR: '$target' does not exist." 1>&2; return 1; }
+          # !! We use `cd` to change to the target's folder
+          # !! so we can correctly resolve the full dir. path.
+        cd "$(dirname "$target")" # note: cd "" is the same as cd . - i.e., a no-op.
+        targetDir=$PWD
+        targetName=$(basename "$target")
+        done=0
+        if [[ ! -L $targetName ]]; then
+            # We've found the ultimate target (or the input file wasn't a symlink to begin with).
+            # For the *ultimate* target we want use `pwd -P` to make sure we use the actual, physical directory,
+            # (not a symlink) to get the *canonical* path.
+          targetDir=$(pwd -P)
+          done=1
+        fi
+          # Print (next) path.
+        printf '%s\n' "${targetDir%/}/$targetName"
+          # Exit, if we've hit the non-symlink at the end of the chain.
+        (( done )) && break 
+          # File is symlink -> continue to resolve.
+        target=$(readlink -- "$targetName")
+      done
+
+    ) }
+
+    # SYNOPSIS
+    #   getFileTimestamp file [kind [outputFormat]]
+    # DESCRIPTION
+    #   Returns one of the specified file's timestamps: last-modified by default, as epoch time by default.
+    #   KIND specifies the type of timestamp m = last-modified (default), a = last-accessed, b = birth, c = (inode data last) changed.
+    #   OUTPUTFORMAT is a format string to pass to the `date` utility; without it, epoch time (a value in seconds) is printed.
+    # COMPATIBILITY
+    #   Linux and BSD platforms (including OSX)
+    function __typex_getFileTimestamp {
+      command typeset file=$1 kind=${2:-m} outFmt=$3 fmtOptChar= fmtChar= osNdx=
+      osNdx=0 # BSD platforms
+      [[ $(command uname) == 'Linux' ]] && osNdx=1
+      fmtOptChar='fc'
+      case "$kind" in
+        m)
+          fmtChar='mY' # '{BSD-format-char}{GNU-format-char}'
+          ;;
+        a)
+          fmtChar='aX'
+          ;;
+        b)
+          fmtChar='BW'
+          ;;
+        c)
+          fmtChar='cZ'
+          ;;
+        *) # unknown timestamp type
+          return 1
+          ;;                                            
+      esac
+      ts=$(command stat -${fmtOptChar:$osNdx:1} "%${fmtChar:$osNdx:1}" "$file") || return # !! zsh requires the '$' to reference variables in subscripts
+      if [[ -n $outFmt ]]; then
+        case $osNdx in
+          0) # BSD
+            command date -j -f '%s' "$ts" +"$outFmt" || return
+            ;;
+          1) # Linux
+            command date -d @"$ts" +"$outFmt" || return
+            ;;
+        esac
+      else
+        command printf '%s\n' "$ts"
+      fi
+    }
+
+    # SYNOPSIS
+    #   __typex_reQuote <text>
+    # DESCRIPTION
+    #   Escapes the specified literal text for use in an *extended* regular expression.
+    # EXAMPLE
+    #   reQuote 'Cost(*): $3.'  # -> 'Cost\(\*\): \$3\.'
+    # Note that the input is assumed to be a literal to be escaped as is - no existing escaping is recognized.
+    # (The sed regex is *1* big character class containing all chars. to escape.)
+    __typex_reQuote() { command sed 's#[][(){}^$.*?+\|]#\\&#g' <<<"$*"; }
+
+
+    # SYNOPSIS
+    #   __typex_install <targetShellFilename> <doInstall> <runningStandalone> <scriptFileAbsPath> [<verbose>]   # <scriptFileAbsPath> = this script's absolute file path
+    # Installs/uninstalls sourcing of this script in the current shell's initialization file.
+    function __typex_install {
+      command typeset targetShellFilename=$1 install=$2 runningStandalone=$3 scriptFileAbsPath=$4 verbose=${5:-0} scriptFileAbsPathQ initFile lineNumFoundAt cmd cmt
+
+      case "$targetShellFilename" in
+        'bash')
+          # !! Sadly, bash ONLY reads ~/.bash_profile in LOGIN shells, and on OSX (Darwin) ALL shells are login shells, so on OSX we must target ~/.bash_profile.
+          [[ $(uname) == 'Darwin' ]] && initFile=~/.bash_profile || initFile=~/.bashrc
+          ;;
+        'ksh')
+          initFile=~/.kshrc
+          ;;
+        'zsh')
+          initFile=~/.zshrc
+          ;;
+        *) 
+          printf '%s\n' "ERROR: ${scriptFileAbsPath##*/} can only be sourced in bash, ksh, or zsh -- $targetShell is not supported." >&2
+          return 2
+          ;;
+      esac
+
+      # Synthesize the sourcing command.
+      # Note: Replacing $HOME in $scriptFileAbsPath - if present -  with '~' is nontrivial to get right when combined with quoting, so we don't bother.
+      scriptFileAbsPathQ=$(command printf '%q' "$scriptFileAbsPath") # shell-quote the path so we can use it without single or double quotes below; caveat: different shells produce different `printf '%q'` output.
+      cmd="[[ -f $scriptFileAbsPathQ ]] && . $scriptFileAbsPathQ"
+      cmt="# Added by ${scriptFileAbsPath##*/} -i; ${scriptFileAbsPath##*/} -u to remove."
+
+      # See if command is already present in target file and, if so, get its line number.
+      # Note: We only search by the naked command, not including the comment, to have the freedom to change the comment's wording later.
+      #       For some additional flexibility, we ignore any whitespace at the start of the line.
+      [[ -f $initFile ]] && lineNumFoundAt=$(egrep -m1 -n '^[[:space:]]*'"$(__typex_reQuote "$cmd")"'([[:space:]]|$)' "$initFile" | cut -d: -f1) || lineNumFoundAt=0
+
+      # Add to / remove the command from the initialization file.
+      # !! We use `ed` to perform the updates, as it is safer to use than `sed -i`, in that it respects symlinks and truly edits the underlying file instead of replacing
+      # !! the symlink with a regular file of the same name.
+      if (( install )); then
+        if (( lineNumFoundAt > 0 )); then # already installed
+            (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' already present in '$initFile'; nothing to do.)"
+        else
+          # Append line to file.
+          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "ERROR: Failed to create initialization file '$initFile'." >&2; return 1; }
+          ed -s "$initFile" <<EOF # ed script: append an empty line, followed by the sourcing command; '.' terminates the text to append, 'w' saves the file.
+a
+
+$cmd $cmt
+.
+w
+EOF
+        fi
+      else # uninstall
+        if (( lineNumFoundAt == 0 )); then # already uninstalled
+          (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' not present in '$initFile'; nothing to do.)"
+        else
+          # Remove line from file; note the need to silence stdout, because ed's 'd' command outputs the line being deleted.
+          ed -s "$initFile" >/dev/null <<EOF  # ed script: jumpt to file to remove, delete it, and if the line above (now-current line '.') is empty, delete that too; 'w' saves the file.
+$lineNumFoundAt
+d
+. g/^$/d
+w
+EOF
+          # Also undefine the sourced *function*.
+          unset -f ${scriptFileAbsPath##*/} 2>/dev/null  
+        fi
+      fi
+      # Output success message.
+      if (( install )); then
+        printf '%s\n' "Sourcing of '$scriptFileAbsPath' installed in '$initFile'."
+      else
+        printf '%s\n' "Sourcing of '$scriptFileAbsPath' uninstalled from '$initFile'."
+      fi
+      return 0
+    }
+
+    # Change shell options, if necessary, and save their state.
+    # !! Shell-global variables must be used to save the state - prefix them with __typex_ to avoid name collisions.
+    function __typex_init {
+      # zsh only: set configuration item that makes `command` invoke builtins, too.
+      [[ -n $ZSH_VERSION ]] && { __typex_prevPosixBuiltinsOptState=$options[posixbuiltins]; options[posixbuiltins]=on; } || unset __typex_prevPosixBuiltinsOptState
+    }
+
+    # Restore changed configuration options, if any.
+    function __typex_restore {
+      # Restore all options that were changed in __typex_init().
+      [[ -n $__typex_prevPosixBuiltinsOptState ]] && options[posixbuiltins]=$__typex_prevPosixBuiltinsOptState
+    }
+    # ----
+
+    # PREREQUISITE FOR ALL REMAINING FUNCTION CALLS:
+    # !! In the code below, given that it is typically *sourced*, we try to *guard against 
+    # !! aliases and shell functions shadowing builtins and standard utilities*. 
+    # !! For standard utilities, `command someUtil ...` can be used.
+    # !! In bash and ksh this also works for builtins, but not in zsh, by default - EXCEPT if configuration
+    # !! item POSIX_BUILTINS (posixbuiltins) is set.
+    # !! (Using `builtin` to invoke builtins is, unfortunately, not an option, because in ksh it serves a different purpose.)
+    # !! Given that this function is typically *sourced*, we must *save and restore* changed shell options, which we do
+    # !! with functions __typex_init() and __typex_restore()
+    # !! UPSHOT:
+    # !!   - Below, *any standard utility or builtin must be called with prefix `command `*.
+    # !!   - { __typex_restore; return [<n>]; } must be used *everywhere* in lieu of just `return` to return from this function.
+    __typex_init
+
+    # Determine this function's name.
+    # !! In ksh, this variable will NOT be available inside NESTED functions.
+    command typeset thisFuncName=$([[ -n $BASH_VERSION ]] && command printf %s "$FUNCNAME" || command printf %s "$0")
+
+    # Look for the special, private option that the top-level script code passes in to signal
+    # that the script was invoked directly rather than getting sourced.
+    command typeset notSourced=0
+    [[ $1 == '--not-sourced' ]] && { shift; notSourced=1; }
+
+    if [[ "$1" == '--help' || "$1" == '-h' ]]; then
+      cat <<EOF
+
+SYNOPSIS
+  $thisFuncName [-p] [-V] [-v] name ...
+  $thisFuncName -i|-u
+
+DESCRIPTION
+  An extended version of the \`type\` utility.
+  
+  Determines if NAME refers to one or more of the following command forms: 
+    alias, shell keyword, shell function, builtin, or
+    executable file in the PATH
+  Provides more information than \`type -a\`, notably executable
+  type, symlink chains, and version information.
+
+  Alternatively, NAME may be a *filesystem path* rather than a mere (file)name,
+  in which case information about that path is reported.
+
+  NOTE: For this utility to detect the current shell's aliases, keywords,
+        (non-exported) shell functions, and builtins, it must be 
+        *sourced*, which is supported in the following shells:
+           bash, ksh, zsh
+        
+        Sourcing this utility without arguments in your shell's per-user
+        initialization file will define a function of the same name that
+        will be available throughout the session.
+         - $thisFuncName -i installs this sourcing for all supported shells,
+         - $thisFuncName -u uninstalls it.
+
+        Ad-hoc and in scripts, you can source and invoke at the same time;
+        e.g.:
+          . $thisFuncName read
+
+        If you instead invoke this utility directly:
+         - only executable *files* will be detected - no other command forms.
+         - a warning to that effect is printed; suppress it with -p.
+
+  -p
+    Only looks for (executable) *files* (ignores aliases, keywords, functions,
+    and builtins). This option applies implicity if NAME is a filesystem path
+    rather than a mere command name.
+
+  -V
+    Suppresses the attempt to obtain version information from executable
+    files. Helpful if you know that the target file doesn't support --version,
+    or you're wary of what invocation with --version might do.
+
+  -v
+    Verbose mode: prints additional information - see below.
+
+  Note that, unless you specified a filesystem path, ALL defined forms of a 
+  given command name are reported, in order of precedence (highest first).
+    bash, zsh: alias > shell keyword > shell function > builtin > executable
+    ksh:       shell keyword > alias > shell function > builtin > executable
+
+  All output starts with a headword identifying the command form / path type,
+  as in the description below.
+  Output for each command form is single-line, except for the optional
+  information added by -v; the latter is indented with 2 spaces.
+  The exit code is 0 if all NAMEs were found, the number of non-existent
+  NAMES otherwise.
+
+  ALIAS:
+    Prints the alias's definition.
+
+  KEYWORD:
+    A shell-language keyword, such as \`while\`; the name is printed.
+
+  FUNCTION:
+    Prints the function name, followed by '()'; e.g., 'foo()'.
+    In bash, if the function is also exported, ' # -x' is appended.
+
+    With -v specified:
+      The function definition (its source code) is printed, too.
+
+  BUILTIN:
+    Prints the builtin's name.
+
+  BINARY / SCRIPT / DIRECTORY / FILE:
+    Prints files' full path, and, in the case of a symlink, the *entire
+    symlink chain to the ultimate target file*, using full paths.
+
+    If the file is an executable script, interpreter information is
+    appended in parentheses; e.g., '(bash script)'.
+    If the file is non-executable, file-type information obtained with
+    \`file\` is appended in parentheses; e.g., '(ASCII text)'.
+    If the file is a special file such as /dev/null, its type is also
+    appended in parentheses; e.g., '(character special)'.
+    
+    Unless -V was specified, an attempt is made to obtain version information
+    through invocation of the executable file with --version.
+    If -V was specified, or if no version information was found, the
+    last-modified timestamp of the (ultimate target) file is used.
+    Whatever information is available is appended in square brackets; e.g.,
+    '[ls (GNU coreutils) 8.21]' or '[2014-09-09]'
+
+    With -v specified:
+      File statistics (permissions, owner, ...) are printed, using \`ls -l\`.
+      For symlinks, this happens for every file in the symlink chain.
+      Additional information printed for executables:
+       - binaries: file-type information obtained with \`file\`.
+       - scripts: the shebang line.
+  
+COMPATIBILITY
+  Platforms supported in principle:
+    OSX, Linux, BSD (with bash installed)
+  On those, sourcing the script (recommmended) works with the following shells:
+    bash, ksh, zsh
+
+EXAMPLES
+    # Print info about utility 'awk' and its symlink chain:
+  \$ $thisFuncName awk  
+  BINARY:     /usr/bin/awk@ -> /etc/alternatives/awk -> /usr/bin/gawk [GNU Awk 4.0.1]
+    # Print information about command forms named 'printf' in order of 
+    # precedence:
+  \$ $thisFuncName printf
+  BUILTIN:    printf
+  BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8.21]
+    # Print information about script 'npm':
+  \$ $thisFuncName -p npm
+  SCRIPT:     /usr/local/bin/npm  (node script)  [2.1.7]
+    # Print information about executables 'nawk' and 'mawk':
+  \$ $thisFuncName -p nawk mawk
+  BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
+  BINARY:     /usr/bin/mawk  [2014-03-24]
+
+EOF
+      return 0
+    fi
+
+    # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
+    [[ $1 == '--version' ]] && { ver="v0.1.0"; echo "$thisFuncName version ${ver#v}"; exit 0; }
+
+    # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
+    command typeset all=1
+
+    # !! zsh requires that all declarations be assigned a value, otherwise it *prints* variable definitions.
+    command typeset p=0 fileSystemOnly=0 V=0 noVersion=0 v=0 verbose=0 install=0 uninstall=0 opt= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
+
+    # Parse options
+    command typeset OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
+    while command getopts 'pVviu' opt; do  # $opt will receive the option *letters* one by one; a trailing : means that an option-argument is required.
+      [[ $opt == '?' ]] && { __typex_restore; return 2; } # Invalid option or missing option argument - getopts has already printed an error to stderr for us, we just exit.
+      command typeset $opt=${OPTARG:-1} # Define a variable named for the option, assumed to be Boolean by default.
+    done
+    shift $((OPTIND - 1)) # Skip the already-processed arguments (options).
+    fileSystemOnly=$p # Note: The absence of the -p option may trigger a warning below in case the *script* was invoked directly with arguments rather than this *function*, after having been sourced.
+    noVersion=$V
+    verbose=$v
+    install=$i
+    uninstall=$u
+
+    if (( install || uninstall )); then # install in / uninstall from the default shell's user-specific initialization file.
+      (( !fileSystemOnly && !noVersion && !(install && uninstall) )) || { echo "$thisFuncName: ARGUMENT ERROR: Incompatible options specified." >&2; __typex_restore; return 2; }
+      (( uninstall )) && install=0
+      # Install/uninstall sourcing for ALL supported shells, IF installed.
+      # Note: By definition, at least *1* supported shell is present: bash - otherwise this script wouldn't execute (unless someone passes it to another shell as filename operand).
+      for shell in bash ksh zsh; do
+        # Ignore, if the shell cannot be found.
+        if [[ -n $ZSH_VERSION ]]; then
+          command which -p $shell >/dev/null 2>&1 || continue
+        else
+          command which $shell >/dev/null 2>&1 || continue
+        fi
+        # !! We must *explicitly* pass the following information:
+        #   - whether this script is being sourced (nested functions in ksh don't see their parents' local variables).
+        #   - this script's absolute path, as determining it inside a *nested* function doesn't work reliably in zsh (as of 5.0.5).      
+        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose || return
+      done
+      (( install )) && command printf '%s\n' 'Open a new shell tab or window for sourcing to take effect.'
+      return 0      
+    fi
+
+    (( $# >= 1 )) || { echo "$thisFuncName: ARGUMENT ERROR: Please specify at least one command name or filesystem path to investigate." >&2; __typex_restore; return 2; }
+
+    names=( "$@" )
+
+    if (( ! fileSystemOnly )); then
+      # The -p option is implied, if all NAMEs are explicit paths (contain "/").
+      fileSystemOnly=1
+      for name in "${names[@]}"; do
+        [[ $name == */* ]] || { fileSystemOnly=0; break; }
+      done
+    fi
+
+    if (( ! fileSystemOnly && notSourced )); then
+      fileSystemOnly=1
+      # !! If this function wasn't sourced, there's no point in looking for aliases, function, builtins, because the invoking shell's context is not accessible.
+      # !! Additionally, if invoked standalone, it is always *bash* that runs this script, which may or may not be the same as the invoking shell - different shell
+      # !! types have different builtins, for instance, so the results could be misleading.
+      # !! - Aliases and functions (with the exception of the rarely used exported-functions feature in bash) are NOT inherited by child shells (as opposed to subshells),
+      # !!   so there is no point in trying to report them when non-sourced.
+      # !! - Builtins: We could in theory make an effort to report builtins (either if we're found to already be running the same shell type as the invoking shell,
+      # !!   or even through explicit determination via a child shell of the same type as the invoking one), but this partial solution could be confusing and 
+      # !!   is not worth the trouble.
+      # !! Ergo: The cleaner and simpler solutionis to ignore aliases, function, builtins when non-sourced, and to make do with the warning that is printed.
+      if __typex_isParentSupportedShell; then
+        command cat >&2 <<EOF
+WARNING: FOR COMPLETE RESULTS, INSTALL SOURCING WITH \`${__typex_scriptpath##*/} -i\`.
+         You've invoked ${__typex_scriptpath##*/} directly as script, so the current shell's
+         aliases, keywords, functions, and builtins won't be detected.
+         For complete results, run this script sourced:  \`. ${__typex_scriptpath##*/} <name>\`
+         To install sourcing persistently for interactive shells, run
+         \`${__typex_scriptpath##*/} -i\`.
+         Use \`-p\` to suppress this warning if you're only looking for
+         executable files.
+EOF
+      else
+        command cat >&2 <<EOF
+WARNING: ${__typex_scriptpath##*/} needs SOURCING to identify the current shell's
+         aliases, keywords, functions, and builtins.
+         Unfortunately, it cannot be sourced in this shell, $(command basename "$(ps -o comm= $PPID)").
+         Use \`-p\` to suppress this warning if you're only looking for
+         executable files.
+EOF
+      fi
+    fi
+
+    # MAIN LOOP over all NAMEs given.
+    numNotFound=0
+    for name in "${names[@]}"; do
+
+      found=0
+      [[ $name == */* ]] && isExplicitPath=1 || isExplicitPath=0
+
+      if (( ! (fileSystemOnly || isExplicitPath) )); then # command name given 
+
+        # First check: is name a *shell keyword*? Note that it's still possible to define aliases and 
+        # even functions (only with the `function funcName { ... }` syntax) of the same name.
+        isKeyword=0
+        if [[ -n $KSH_VERSION ]]; then
+          command whence -a "$name" 2>/dev/null | command egrep -q ' keyword$' && isKeyword=1
+        elif [[ -n $ZSH_VERSION ]]; then
+          command type -wa "$name" 2>/dev/null | command egrep -q ' reserved$' && isKeyword=1
+        else # bash
+          command type -ta "$name" 2>/dev/null | command fgrep -qx 'keyword' && isKeyword=1
+        fi
+        if (( isKeyword )); then
+            found=1
+            keywordOutput=$(command printf '%-10s  %s' 'KEYWORD:' "$name")
+        fi
+
+        # ksh (also dash): keyword has HIGHER precedence than alias.
+        if [[ -n $keywordOutput && -n $KSH_VERSION ]]; then
+          command printf '%s\n' "$keywordOutput"
+        fi
+
+        # Alias? 
+        def=$(command alias "$name" 2>/dev/null)
+        if [[ -n $def ]]; then
+            command printf '%-10s  %s\n' 'ALIAS:' "${def#alias }"
+            (( all )) || { __typex_restore; return 0; }
+            found=1
+        fi
+
+        # bash, zsh: keyword has LOWER precedence than alias.
+        if [[ -n $keywordOutput && -z $KSH_VERSION ]]; then
+          command printf '%s\n' "$keywordOutput"
+        fi
+
+        # Shell function?
+        def=$(command typeset -f "$name" 2>/dev/null) # get function definition
+        if [[ -n $def ]]; then  # if a function, print its name followed by ()
+            command printf '%-10s  %s' 'FUNCTION:' "$name()"
+            if [[ -n $BASH_VERSION ]]; then # bash only: if it's an exported function, append '  # -x' 
+              command declare -F | command egrep -q -- "-fx $name\$" && command printf '  # -x'
+            fi
+            command printf '\n'
+            # if in verbose mode: print function definition (source code) too.
+            (( verbose )) && command sed 's/^/  /' <<<"$def"
+            (( all )) || { __typex_restore; return 0; }
+            found=1
+        fi
+
+        # Builtin? 
+        if [[ -n $KSH_VERSION ]]; then
+          # !! ksh: if a function shadows a builtin, `type -a` inexplicably doesn't report the builtin, so we must test differently.
+          # !!      In ksh - unlike in bash and zsh - running `builtin` without arguments lists all defined builtins, so we look in its output.
+          command builtin | command fgrep -qx -- "$name" && isBuiltIn=1
+        elif [[ -n $ZSH_VERSION ]]; then
+          # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
+          # !! -w prints a more terse description
+          command type -wa -- "$name" 2>/dev/null | command egrep -q ':\s+builtin$' && isBuiltIn=1
+        else # bash
+          # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
+          # -t prints one-word descriptions; without it, shell functions are printed with their full definition, which could lead to false positives.
+          command type -ta -- "$name" 2>/dev/null | command fgrep -qx 'builtin' && isBuiltIn=1
+        fi
+        if (( isBuiltIn )); then
+            command printf '%-10s  %s\n' 'BUILTIN:' "$name"
+            (( all )) || { __typex_restore; return 0; }
+            found=1
+        fi
+      fi
+
+      # [Executable] file or directory?
+      files=
+      if (( isExplicitPath )); then
+        if [[ -d $name ]]; then   # directory
+          # Convert to full path (without resolving symlinks).
+          files=$(command cd "$name" && command echo "$PWD")
+          # Further analysis happens below.
+        elif [[ -e $name ]]; then # file or symlink to file or special file (block device, character devie, pipe, socket) - we all treat them the same here and rely on `file` to provide type info below.
+          # Convert to full path (without resolving symlinks).
+          files="$(command cd "$(command dirname "$name")" && command echo "${PWD%/}/")$(command basename "$name")"
+          # Further analysis happens below.
+        else
+          : # We assume this means the path doesn't exist and report it below.
+        fi
+      else
+        # Get ALL files in the $PATH, using `which -a`.
+        if [[ -n $ZSH_VERSION ]]; then
+          # !! zsh: -p is needed to only consider FILES, not also OTHER command forms, such as functions (which would print as their full definitions) - not needed for bash and ksh (which do not even support -p).
+          files=$(command which -ap -- "$name" 2>/dev/null) || files='' # !! `which -ap` under certain circumstances, e.g. `which -ap while`, prints its error message to *stdout*, so we make sure to only capture output in case of *success*.
+        else  
+          files=$(command which -a -- "$name" 2>/dev/null) || files=''
+        fi
+      fi
+      if [[ -n $files ]]; then
+
+          found=1
+          while command read -r file; do  # !! zsh: options[posixbuiltins] must be ON for `command read` to work as expected - see above.
+            
+            fileType=$(command file -Lb -- "$file") # determine file-type info of the file, or, in case of a symlink, its ultimate target
+            if [[ -d $file ]]; then
+              fileCategory='DIRECTORY:'
+            elif [[ -x $file ]]; then
+              # See if the executable is a *script* (an executable text file, normally with a shebang line)
+              scriptType=$(command egrep -o '(POSIX )?(\w+ )script' <<<"$fileType")
+              # `file` reports shebang-less scripts as text files rather than a script - we create our own type description.
+              [[ -z $scriptType ]] && command egrep -q '\<text\>' <<<"$fileType" && scriptType='script w/o shebang line'
+              [[ -n $scriptType ]] && fileCategory='SCRIPT:' || fileCategory='BINARY:'
+            else
+              fileCategory='FILE:'
+            fi
+
+            # Print the full path and, if applicable, symlink chain.
+            if [[ -L $file ]]; then
+              # A symlink: resolve the *entire* chain of symlinks `ls -F`-style, but with *full* paths; e.g.: 
+              #     /usr/local/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/gawk
+              # __typex_rreadlinkchain() reads the chain of links: from given link to (ultimate) target.
+              #  The `awk` command replaces the newlines with ' -> 'and terminates every field but the last with "@" to mark it as a symlink.
+              #  Note: `gsub("\n$", "")` makes sure that the last line has no trailing \n - gawk, for instance, apparently always appends one.
+              fileLinkChain=$(__typex_rreadlinkchain "$file")
+              trueFile=$(command tail -n 1 <<<"$fileLinkChain")
+              command printf '%-10s  %s' "$fileCategory" "$(command awk -v RS= -v sep=' -> ' '{ gsub("\n$", ""); gsub("\n", "@" sep); printf "%s", $0 }' <<<"$fileLinkChain")"
+            else
+              trueFile=$file
+              command printf '%-10s  %s' "$fileCategory" "$file"            
+            fi
+
+            # Append script-type/non-executable-file-type info and, for executables, version info, if available.
+            if [[ -d $file ]]; then
+                : # n/a
+            elif [[ -x $file ]]; then
+
+              # For executable *scripts*, append script-interpreter information (e.g., 'bash script')
+              [[ -n $scriptType ]] && printf '  (%s)' "$scriptType"
+
+              # For executables: Try to obtain version information, unless suppressed.
+              ver=
+              if (( ! noVersion )); then
+                # Note that we only keep the 1st line (some utilities - e.g., gawk - output multiple lines).
+                # !! Blindly invoking with --version is somewhat fragile, in that poorly designed executables that don't actually support --version
+                # !! could ignore the option and do their own thing, including waiting for input. We try to avoid that by passing /dev/null to stdin.
+                # !! Still, the invocation could block for other reasons or even perform unwanted tasks.
+                # !! Even if it doesn't block and produces output, that output may or may not be version information.
+                # !! Some utilities, such as ksh and /usr/bin/time, inexplicably report version information on std*err*.
+                # !! Given the variety of version information, we can only perform a crude check to rule out obvious non-version strings.
+                ver=$("$file" --version </dev/null 2>&1 | command head -n 1 | command fgrep -v -- '--version' | command fgrep -vi -- $'unknown\ninvalid\nillegal\nunrecognized\nnot recognized' | command egrep -i -e '[0-9]\.' -e 'version' -e 'build' )
+              fi
+              # If lookup of version information was suppressed or no version info was found,
+              # use *the file's last-modified timestamp* as a substitute.
+              # Note: We use the last-modified timestamp rather than the file-creation ('birth') date, because the latter is not always available on Linux platforms.
+              [[ -z $ver ]] && ver=$(__typex_getFileTimestamp "$trueFile" m '%Y-%m-%d')
+              # Print version / last-modified info.
+              printf '  [%s]' "$ver"                        
+            
+            else # non-executable file
+              # Append file-type information.
+              printf '  (%s)' "$fileType"
+            fi
+
+            # If in verbose mode: 
+            if (( verbose )); then
+              # Add file stats via `ls -l` (in case of a symlink: for each file in the symlink chain)
+              while command read -r thisfile; do            
+                command printf '\n  %s' "$(command ls -dFAhl -- "$thisfile" | command cut -d/ -f1)"
+              done <<<"${fileLinkChain:-$file}"
+              # Add additional information for executables.
+              if [[ ! -d $file ]]; then
+                if [[ -n $scriptType ]]; then # for a script, print the shebang line (for shebang-less files, this will simply be whatever the 1st line happens to be).
+                  command printf '\n  %s' "$(command head -n 1 "$file")"
+                elif [[ -x $file ]]; then # for an executable binary, output file-type information (architecture, ...)
+                  command printf '\n  %s' "$(sed '1! s/^/  /' <<<"$fileType")" # some binaries produce multi-line input
+                fi
+              fi
+            fi
+
+            command printf '\n'
+
+            (( all )) || break  # not ALL paths requested? we're done after the first pass.
+
+          done <<<"$files"
+      fi
+
+      # If not found, print error message.
+      if (( ! found )); then
+        (( ++numNotFound ))
+        if (( isExplicitPath )); then
+          errMsgSuffix=": no such file or directory"
+        else
+          (( fileSystemOnly )) && errMsgSuffix=' is not an executable in the PATH.' || errMsgSuffix=' is neither an alias, keyword, function, builtin, nor an executable in the PATH.'
+        fi
+        command printf '%s\n' "$thisFuncName: \"${name}\"${errMsgSuffix}" >&2
+      fi
+
+    done # for name in names
+
+    __typex_restore  # restore global settings
+    return $numNotFound  # exit code is the number of NAMEs that were NOT found; i.e., 0, if all were found.
+
+}
+
+
+# We only get here in 2 cases:
+#  - The script is being *sourced* by the current shell, in order to define the function of the same name for later use.
+#    Once sourced, invoking `typex` will invoke the *function directly*.
+#  - Either the script is being invoked *directly* (and, due to its shebang line, run by *bash*) or the script filenname was passed to a shell executable.
+#    Either way, the invoking shell's aliases and functions won't be visible.
+if (( $# )); then # Arguments were specified: most likely a direct, non-sourced invocation, but potentially a sourced invocation that *also* passes arguments.
+
+  # Determine if this script is being sourced in *addition* to arguments being passed.
+  if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && [[ $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then
+    typex "$@"       # This script is being sourced *and* invoked with arguments at the same time - useful for ad-hoc sourcing, such as when using typex in a script or when running something like `shall -c '. ./typex ...'. typex() remains defined as a - desirable - side effect.
+  else # This script is NOT being sourced; pass that fact to the implementing function via a private, special option - this will trigger a warning about not having access to *shell* definitions (only executable *files*).
+    typex --not-sourced "$@"    
+  fi
+
+else # No arguments, assume sourcing.
+  : # NOTHING MORE TO DO: The assumption is that this script is being *sourced* for *later* use of the typex() *function* - since the function has already been defined at this point, there is nothing more to do.
+  # If the script isn't actually being *sourced*, the entire invocation is effectively a *no-op*. We don't try to handle this case and instead rely on users to seek help with -h / --help.
+  # Incidentally, all `type` implementations except in `ksh` (where `type` is an alias of `whence -v`) happen to do the same thing when invoked without arguments: they do nothing and report exit code 0.
+fi

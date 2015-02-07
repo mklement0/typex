@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+PATH="../../bin:$PATH"
+
+typex -h | fgrep -q 'SYNOPSIS' || exit
+
+typex --help | fgrep -q 'SYNOPSIS' || exit

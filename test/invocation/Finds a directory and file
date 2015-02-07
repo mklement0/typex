@@ -1,0 +1,7 @@
+#!/usr/bin/env shall -l bash,ksh,zsh
+
+PATH="../../bin:$PATH"
+
+. typex / | egrep -q '^DIRECTORY:' || exit
+
+. typex /dev/null | egrep -q '^FILE:' || exit

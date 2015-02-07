@@ -1,0 +1,7 @@
+#!/usr/bin/env shall -l bash,ksh,zsh
+
+PATH="../../bin:$PATH"
+
+alias foo=bar
+
+. typex foo | egrep -q '^ALIAS:'

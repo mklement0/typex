@@ -1,0 +1,7 @@
+#!/usr/bin/env dash
+
+PATH="../../bin:$PATH"
+
+. typex while && exit 1  # sourcing should FAIL, because sourcing in /bin/sh is not supported.
+
+exit 0

@@ -1,0 +1,7 @@
+#!/usr/bin/env shall -l bash,ksh,zsh
+
+PATH="../../bin:$PATH"
+
+foo() { :; }
+
+. typex foo | egrep -q '^FUNCTION:'
