@@ -33,18 +33,27 @@ For this utility to detect the current shell's aliases, keywords, (non-exported)
 
 ## Quick Examples
 
-        # Print information about command forms named 'printf' in order of precedence.
-    $ typex printf
-    BUILTIN:    printf
-    BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8.21]
+```shell
+# Print information about command forms named 'printf' in order of precedence.
+$ typex printf
+BUILTIN:    printf
+BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8.21]
 
-        # Print information about binary 'nawk' - note the chain of symlinks, and its use of *absolute* paths.
-    $ typex nawk
-    BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
+# Print information about binary 'nawk'; note the chain of symlinks,
+# and its use of *absolute* paths, as well as the version information.
+$ typex nawk
+BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
 
-        # Print information about executable script 'npm' - note the interpreter information ('js script').
-    $ typex npm
-    SCRIPT:     /usr/bin/npm@ -> /usr/lib/node_modules/npm/bin/npm-cli.js  (js script)  [1.4.28]
+# Print information about executable script 'npm';
+# note the interpreter information ('js script').
+$ typex npm
+SCRIPT:     /usr/bin/npm@ -> /usr/lib/node_modules/npm/bin/npm-cli.js  (js script)  [1.4.28]
+
+# Print extended information about special file /dev/null
+$ typex -v /dev/null
+FILE:       /dev/null  (character special )
+	crw-rw-rw- 1 root root 1, 3 Feb  1 19:43
+```
 
 ## Installation
 
