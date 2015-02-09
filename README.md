@@ -1,7 +1,7 @@
 # typex
 
-`typex` is an extended version of the `type` Unix shell builtin, combining features from the `which` and `file` utilities:  
-Given a name, it indicates how the current shell would interpret that command, and provides additional information about each command form found.
+`typex` is an extended version of the `type` Unix shell builtin that incorporates features from the `which` and `file` utilities:  
+Given a name, it indicates how the current shell would interpret that name as a command, and provides information about each command form found.
 
 `typex` extends `type` as follows:
 
@@ -225,6 +225,9 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
+
+* **v0.1.3** (2015-02-09):
+  * Doc: read-me and package description improved.
 
 * **v0.1.2** (2015-02-07):
   * Fix: sourcing no longer auto-installed/-removed on package installation - removed due to permission headaches; users must now run typex -i manually after installation.
