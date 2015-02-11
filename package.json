@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "An extended version of the `type` builtin in Unix shells that incorporates features from the `which` and `file` utilities.",
   "private": false,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "os": [
     "darwin",
     "linux"
@@ -21,6 +21,7 @@
   },
   "scripts": {
     "test": "make test",
+    "preinstall": "bash --version >/dev/null 2>&1 || printf '%s\\n\\n' \"WARNING: bash not found; make sure it is installed before running this utility.\" >&2",
     "install": "printf '%s\\n\\n' \"IMPORTANT: To install sourcing for supported shells, run typex -i\""
   },
   "keywords": [

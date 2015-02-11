@@ -1,5 +1,3 @@
 #!/bin/sh
 
-which bash >/dev/null
-
-
+bash --version >/dev/null
