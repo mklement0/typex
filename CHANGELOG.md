@@ -4,6 +4,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **v0.1.6** (2015-02-11):
+  * Temp. fix: `typex -i` now properly reports failure on platforms that don't have the actual `ed` line editor, such as Debian.
+
 * **v0.1.5** (2015-02-11):
   * Fix: --version no longer mistakenly exits the current shell when typex is invoked as a sourced function.
   * Dev: bash-presence test improved.

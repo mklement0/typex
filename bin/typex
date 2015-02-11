@@ -173,7 +173,7 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
     #   __typex_install <targetShellFilename> <doInstall> <runningStandalone> <scriptFileAbsPath> [<verbose>]   # <scriptFileAbsPath> = this script's absolute file path
     # Installs/uninstalls sourcing of this script in the current shell's initialization file.
     function __typex_install {
-      command typeset targetShellFilename=$1 install=$2 runningStandalone=$3 scriptFileAbsPath=$4 verbose=${5:-0} scriptFileAbsPathQ initFile lineNumFoundAt cmd cmt
+      command typeset targetShellFilename=$1 install=$2 runningStandalone=$3 scriptFileAbsPath=$4 verbose=${5:-0} scriptFileAbsPathQ= initFile= lineNumFoundAt= cmd= cmt= ec=
 
       case "$targetShellFilename" in
         'bash')
@@ -206,42 +206,54 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
       # Add to / remove the command from the initialization file.
       # !! We use `ed` to perform the updates, as it is safer to use than `sed -i`, in that it respects symlinks and truly edits the underlying file instead of replacing
       # !! the symlink with a regular file of the same name.
+      # !! Using `command ed` to invoke is crucial, because on some Linux distros such as Debian `ed` isn't actually installed, but merely an alias of `nano` which breaks our function.
+      ec=0
       if (( install )); then
         if (( lineNumFoundAt > 0 )); then # already installed
             (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' already present in '$initFile'; nothing to do.)"
         else
           # Append line to file.
-          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "WARNING: Failed to create initialization file '$initFile'. If this is happening during installation of ${scriptFileAbsPath##*/} itself, try running ${scriptFileAbsPath##*/} -i later." >&2; return 1; }
-          ed -s "$initFile" <<EOF # ed script: append an empty line, followed by the sourcing command; '.' terminates the text to append, 'w' saves the file.
+          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "ERROR: Failed to create shell initialization file '$initFile'. Please create it manually and add line '. $scriptFileAbsPath'." >&2; return 1; }
+          command ed -s "$initFile" <<EOF # ed script: append an empty line, followed by the sourcing command; '.' terminates the text to append, 'w' saves the file.
 a
 
 $cmd $cmt
 .
 w
 EOF
+          ec=$?
         fi
       else # uninstall
         if (( lineNumFoundAt == 0 )); then # already uninstalled
           (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' not present in '$initFile'; nothing to do.)"
         else
           # Remove line from file; note the need to silence stdout, because ed's 'd' command outputs the line being deleted.
-          ed -s "$initFile" >/dev/null <<EOF  # ed script: jumpt to file to remove, delete it, and if the line above (now-current line '.') is empty, delete that too; 'w' saves the file.
+          command ed -s "$initFile" >/dev/null <<EOF  # ed script: jumpt to file to remove, delete it, and if the line above (now-current line '.') is empty, delete that too; 'w' saves the file.
 $lineNumFoundAt
 d
 . g/^$/d
 w
 EOF
+          ec=$?
           # Also undefine the sourced *function*.
           unset -f ${scriptFileAbsPath##*/} 2>/dev/null  
         fi
       fi
-      # Output success message.
+      # Output success / error  message.
       if (( install )); then
-        printf '%s\n' "Sourcing of '$scriptFileAbsPath' installed in '$initFile'."
+        if (( ec == 0 )); then
+          command printf '%s\n' "Sourcing of '$scriptFileAbsPath' installed in '$initFile'."
+        else
+          command printf '%s\n' "ERROR: Failed to install sourcing of '$scriptFileAbsPath' in '$initFile'; please manually add line '. $scriptFileAbsPath'." >&2
+        fi
       else
-        printf '%s\n' "Sourcing of '$scriptFileAbsPath' uninstalled from '$initFile'."
+        if (( ec == 0 )); then
+          command printf '%s\n' "Sourcing of '$scriptFileAbsPath' uninstalled from '$initFile'."
+        else
+          command printf '%s\n' "ERROR: Failed to uninstall sourcing of '$scriptFileAbsPath' from '$initFile'; please manually remove the line containing '. $scriptFileAbsPath'." >&2
+        fi
       fi
-      return 0
+      return $ec
     }
 
     # Change shell options, if necessary, and save their state.
@@ -412,7 +424,7 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.1.5"; echo "$thisFuncName version ${ver#v}"; return 0; }
+    [[ $1 == '--version' ]] && { ver="v0.1.6"; echo "$thisFuncName version ${ver#v}"; return 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
@@ -438,7 +450,9 @@ EOF
       (( uninstall )) && install=0
       # Install/uninstall sourcing for ALL supported shells, IF installed.
       # Note: By definition, at least *1* supported shell is present: bash - otherwise this script wouldn't execute (unless someone passes it to another shell as filename operand).
+      command typeset shellCount=0 okCount=0
       for shell in bash ksh zsh; do
+        (( ++shellCount ))
         # Ignore, if the shell cannot be found.
         if [[ -n $ZSH_VERSION ]]; then
           command which -p $shell >/dev/null 2>&1 || continue
@@ -447,11 +461,16 @@ EOF
         fi
         # !! We must *explicitly* pass the following information:
         #   - whether this script is being sourced (nested functions in ksh don't see their parents' local variables).
-        #   - this script's absolute path, as determining it inside a *nested* function doesn't work reliably in zsh (as of 5.0.5).      
-        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose # !! we do NOT error out here, because installation of sourcing also happens during npm package installation, and an error would prevent installation altogether.
+        #   - this script's absolute path, as determining it inside a *nested* function doesn't work reliably in zsh (as of 5.0.5).
+        # Also, we don't fail right away, so that the command can be attempted for all shells, and at least error messages are shown for each.
+        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose && (( ++okCount ))
       done
-      (( install )) && command printf '%s\n' 'Open a new shell tab or window for sourcing to take effect.'
-      return 0      
+      (( install && okCount )) && command printf '%s\n' 'Open a new shell tab or window for sourcing to take effect.'
+      if (( okCount == shellCount )); then
+        return 0
+      else
+        return 1
+      fi
     fi
 
     (( $# >= 1 )) || { echo "$thisFuncName: ARGUMENT ERROR: Please specify at least one command name or filesystem path to investigate." >&2; __typex_restore; return 2; }
