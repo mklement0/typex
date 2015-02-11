@@ -92,9 +92,9 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
         [[ -L $target || -e $target ]] || { printf '%s\n' "typex: ERROR: '$target' does not exist." 1>&2; return 1; }
           # !! We use `cd` to change to the target's folder
           # !! so we can correctly resolve the full dir. path.
-        cd "$(dirname "$target")" # note: cd "" is the same as cd . - i.e., a no-op.
+        cd "$(dirname -- "$target")" # note: cd "" is the same as cd . - i.e., a no-op.
         targetDir=$PWD
-        targetName=$(basename "$target")
+        targetName=$(basename -- "$target")
         done=0
         if [[ ! -L $targetName ]]; then
             # We've found the ultimate target (or the input file wasn't a symlink to begin with).
@@ -412,7 +412,7 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.1.3"; echo "$thisFuncName version ${ver#v}"; exit 0; }
+    [[ $1 == '--version' ]] && { ver="v0.1.4"; echo "$thisFuncName version ${ver#v}"; exit 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1

@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "An extended version of the `type` builtin in Unix shells that incorporates features from the `which` and `file` utilities.",
   "private": false,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "os": [
     "darwin",
     "linux"
@@ -32,7 +32,8 @@
     "path",
     "file",
     "command",
-    "definition"
+    "definition",
+    "cli"
   ],
   "author": "Michael Klement <mklement0@gmail.com> (http://same2u.net)",
   "license": "MIT",

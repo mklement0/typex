@@ -226,6 +226,11 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **v0.1.4** (2015-02-11):
+  * Fix: Filenames that start with '-' are now handled correctly.
+  * Dev: Test for presence of bash added.
+  * Dev: Makefile improvements.
+
 * **v0.1.3** (2015-02-09):
   * Doc: read-me and package description improved.
 
