@@ -4,6 +4,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **v0.1.7** (2015-03-04):
+  * Fix: Variables `$u` and `$i` that happen to be defined in the current shell no longer interfere with the sourced function.
+
 * **v0.1.6** (2015-02-11):
   * Temp. fix: `typex -i` now properly reports failure on platforms that don't have the actual `ed` line editor, such as Debian.
 

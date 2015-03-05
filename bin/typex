@@ -424,16 +424,19 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.1.6"; echo "$thisFuncName version ${ver#v}"; return 0; }
+    [[ $1 == '--version' ]] && { ver="v0.1.7"; echo "$thisFuncName version ${ver#v}"; return 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
 
     # !! zsh requires that all declarations be assigned a value, otherwise it *prints* variable definitions.
-    command typeset p=0 fileSystemOnly=0 V=0 noVersion=0 v=0 verbose=0 install=0 uninstall=0 opt= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
+    command typeset numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
 
     # Parse options
-    command typeset OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
+    command typeset opt= OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
+    # !! The following must mirror the option chars. passed to `getopts` and the long variable names mapped to them.
+    command typeset p=0 V=0 v=0 i=0 u=0 
+    command typeset fileSystemOnly=0 noVersion=0 verbose=0 install=0 uninstall=0
     while command getopts 'pVviu' opt; do  # $opt will receive the option *letters* one by one; a trailing : means that an option-argument is required.
       [[ $opt == '?' ]] && { __typex_restore; return 2; } # Invalid option or missing option argument - getopts has already printed an error to stderr for us, we just exit.
       command typeset $opt=${OPTARG:-1} # Define a variable named for the option, assumed to be Boolean by default.
