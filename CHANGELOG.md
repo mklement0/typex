@@ -4,6 +4,15 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **v0.2.0** (2015-05-24):
+  * [enhancement] Now by default prints information about the _current shell_ (if no names are given).
+  * [enhancement] Specifying `.` now also prints the current directory's canonical path.
+  * [enhancement] Given a filesystem path, now also displays its canonical path with all symlinks resolved, if different.
+  * [enhancement] A warning is now issued if a bareword can't be found as a command, but a file or dir. of the same name exists in the current dir.
+  * [enhancement] For aliases, their definitions are now printed recursively, if applicable, and, if the ultimate definition's first token is a command, its information is printed as well.
+  * [fix] `typex perl` now correctly reports Perl's version.
+  * [fix] Paths with embedded space are now handled correctly.
+
 * **v0.1.7** (2015-03-04):
   * Fix: Variables `$u` and `$i` that happen to be defined in the current shell no longer interfere with the sourced function.
 

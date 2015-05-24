@@ -1,7 +1,9 @@
 # typex
 
 `typex` is an extended version of the `type` Unix shell builtin that incorporates features from the `which` and `file` utilities:  
+By default, it provides information about the current shell.
 Given a name, it indicates how the current shell would interpret that name as a command, and provides information about each command form found.
+Given a filesystem path, it provides information such as file type and the canonical path.
 
 `typex` extends `type` as follows:
 
@@ -28,12 +30,16 @@ For this utility to detect the current shell's aliases, keywords, (non-exported)
 
 `typex` can still be useful in unsupported shells when invoked standalone (in which case it runs in `bash`), albeit in limited form:
 
-* only executable *files* (and filesystem objects) will be detected - no other command forms.
+* only executable *files* and filesystem objects will be detected - no other command forms.
 * a warning to that effect is printed; you can suppress it with `-p`
 
 ## Quick Examples
 
 ```shell
+# Print information about the current shell.
+$ typex
+BINARY:     /bin/bash  [GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin14)]
+
 # Print information about command forms named 'printf' in order of precedence.
 $ typex printf
 BUILTIN:    printf
@@ -61,8 +67,10 @@ With [node.js](http://nodejs.org/) installed, install via the [npm registry](htt
 
 	npm install typex -g
 
-After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
+**IMPORTANT**: After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
 To remove these sourcing commands later, run `typex -u`.
+
+As stated, `typex` can still be useful when _not_ sourced, but functionality is limited to inspecting _external_ utilities and filesystem objects.
 
 <!-- DO NOT EDIT: This chapter is updated by `make update-readme/release`. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
 
@@ -72,11 +80,12 @@ To remove these sourcing commands later, run `typex -u`.
 $ typex -h
 
 SYNOPSIS
-  typex [-p] [-V] [-v] name ...
+  typex [-p] [-V] [-v] [name ...]
   typex -i|-u
 
 DESCRIPTION
-  An extended version of the `type` utility.
+  An extended version of the `type` utility that incorporates elements
+  of the `which` and `file` utilities.
   
   Determines if NAME refers to one or more of the following command forms: 
     alias, shell keyword, shell function, builtin, or
@@ -86,6 +95,8 @@ DESCRIPTION
 
   Alternatively, NAME may be a *filesystem path* rather than a mere (file)name,
   in which case information about that path is reported.
+
+  Not specying any NAME prints information about the current shell.
 
   NOTE: For this utility to detect the current shell's aliases, keywords,
         (non-exported) shell functions, and builtins, it must be 
@@ -103,7 +114,7 @@ DESCRIPTION
           . typex read
 
         If you instead invoke this utility directly:
-         - only executable *files* will be detected - no other command forms.
+         - only executable *files* will be detected - no other command forms;
          - a warning to that effect is printed; suppress it with -p.
 
   -p
@@ -132,7 +143,9 @@ DESCRIPTION
   NAMES otherwise.
 
   ALIAS:
-    Prints the alias's definition.
+    Prints the alias's definition. If the first token of the alias' 
+    definition is itself a command, information about that command is
+    printed as well, potentially recursively.
 
   KEYWORD:
     A shell-language keyword, such as `while`; the name is printed.
@@ -150,6 +163,10 @@ DESCRIPTION
   BINARY / SCRIPT / DIRECTORY / FILE:
     Prints files' full path, and, in the case of a symlink, the *entire
     symlink chain to the ultimate target file*, using full paths.
+
+    If the file is not itself a symlink, but has symlink components
+    (directories) in its *path*, the input path is printed as well
+    as the canonical path with all symlinks resolved.
 
     If the file is an executable script, interpreter information is
     appended in parentheses; e.g., '(bash script)'.
@@ -175,10 +192,14 @@ DESCRIPTION
 COMPATIBILITY
   Platforms supported in principle:
     OSX, Linux, BSD (with bash installed)
-  On those, sourcing the script (recommmended) works with the following shells:
+  Among those, sourcing the script (recommmended) works in the following
+  shells:
     bash, ksh, zsh
 
 EXAMPLES
+    # Print info about the current shell.
+  $ typex 
+  BINARY:     /bin/bash  [GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin14)]
     # Print info about utility 'awk' and its symlink chain:
   $ typex awk  
   BINARY:     /usr/bin/awk@ -> /etc/alternatives/awk -> /usr/bin/gawk [GNU Awk 4.0.1]
@@ -225,6 +246,15 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
+
+* **v0.2.0** (2015-05-24):
+  * [enhancement] Now by default prints information about the _current shell_ (if no names are given).
+  * [enhancement] Specifying `.` now also prints the current directory's canonical path.
+  * [enhancement] Given a filesystem path, now also displays its canonical path with all symlinks resolved, if different.
+  * [enhancement] A warning is now issued if a bareword can't be found as a command, but a file or dir. of the same name exists in the current dir.
+  * [enhancement] For aliases, their definitions are now printed recursively, if applicable, and, if the ultimate definition's first token is a command, its information is printed as well.
+  * [fix] `typex perl` now correctly reports Perl's version.
+  * [fix] Paths with embedded space are now handled correctly.
 
 * **v0.1.7** (2015-03-04):
   * Fix: Variables `$u` and `$i` that happen to be defined in the current shell no longer interfere with the sourced function.
