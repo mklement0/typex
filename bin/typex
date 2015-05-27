@@ -534,7 +534,7 @@ WARNING: FOR COMPLETE RESULTS, INSTALL SOURCING WITH \`${__typex_scriptpath##*/}
          To install sourcing persistently for interactive shells, run
          \`${__typex_scriptpath##*/} -i\`.
          Use \`-p\` to suppress this warning if you're only looking for
-         executable files.
+         [executable] files.
 EOF
       else
         command cat >&2 <<EOF
