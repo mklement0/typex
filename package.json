@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "An extended version of the `type` builtin in Unix shells that incorporates features from the `which` and `file` utilities.",
   "private": false,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "os": [
     "darwin",
     "linux"
