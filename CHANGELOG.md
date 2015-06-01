@@ -5,7 +5,7 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
 * **v0.2.1** (2015-05-30):
-  * ???
+  * [doc] [npm registry badge[(https://badge.fury.io) added
 
 * **v0.2.0** (2015-05-24):
   * [enhancement] Now by default prints information about the _current shell_ (if no names are given).

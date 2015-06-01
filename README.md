@@ -1,3 +1,5 @@
+[![npm version](https://badge.fury.io/js/typex.svg)](http://badge.fury.io/js/typex)
+
 # typex
 
 `typex` is an extended version of the `type` Unix shell builtin that incorporates features from the `which` and `file` utilities:  
@@ -231,7 +233,7 @@ This project gratefully depends on the following open-source components, accordi
 
 <!-- DO NOT EDIT THE NEXT CHAPTER and RETAIN THIS COMMENT: The next chapter is updated by `make update-readme/release` with the dependencies from 'package.json'. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
 
-### npm Dependencies
+### npm dependencies
 
 * [json (D)](https://github.com/trentm/json)
 * [replace (D)](https://github.com/harthur/replace)
@@ -246,6 +248,9 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
+
+* **v0.2.1** (2015-05-30):
+  * [doc] [npm registry badge[(https://badge.fury.io) added
 
 * **v0.2.0** (2015-05-24):
   * [enhancement] Now by default prints information about the _current shell_ (if no names are given).
