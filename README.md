@@ -1,6 +1,24 @@
-[![npm version](https://badge.fury.io/js/typex.svg)](http://badge.fury.io/js/typex)
+[![npm version](https://img.shields.io/npm/v/typex.svg)](https://npmjs.com/package/typex) [![license](https://img.shields.io/npm/l/typex.svg)](https://github.com/mklement0/typex/blob/master/LICENSE.md)
 
-# typex
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+**Contents**
+
+- [typex &mdash; Introduction](#typex-&mdash-introduction)
+  - [Examples](#examples)
+  - [Installation](#installation)
+    - [From the npm registry](#from-the-npm-registry)
+    - [Manual installation](#manual-installation)
+  - [Usage](#usage)
+  - [License](#license)
+    - [Acknowledgements](#acknowledgements)
+    - [npm dependencies](#npm-dependencies)
+  - [Changelog](#changelog)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+# typex &mdash; Introduction
 
 `typex` is an extended version of the `type` Unix shell builtin that incorporates features from the `which` and `file` utilities:  
 By default, it provides information about the current shell.
@@ -14,28 +32,16 @@ Given a filesystem path, it provides information such as file type and the canon
 * If an executable is a symlink, the entire chain of symlinks up to and including the ultimate target is printed, using _absolute_ paths.
 * The type of executable is printed, including the specific shell/interpreter used to run executable scripts.
 * Version information, if available, is printed for executables.
-* Optionally, you can get information about any filesystem object.
+* Optionally, you can get information about any filesystem object, including its canoncial path and symlink chain, if applicable.
+
+Note: `typex` is designed for interactive use, to provide humans with concise, salient information about a command or filesystem object.
+As such, its output is geared toward readability by humans, and should not be relied on for programmatic parsing.
 
 See the [Usage](#usage) chapter for details.
 
-## Supported platforms
+For supported platforms and shells, see the [Installation](#installation) chapter.
 
-**Linux and OS X**
-
-<sup>In principle, any platform with `bash` that uses either GNU or BSD utilities should work.</sup>
-
-## Supported shells
-
-For this utility to detect the current shell's aliases, keywords, (non-exported) shell functions, and builtins, it must be *sourced*, which is supported in the following shells:
-
-**bash, ksh, and zsh**
-
-`typex` can still be useful in unsupported shells when invoked standalone (in which case it runs in `bash`), albeit in limited form:
-
-* only executable *files* and filesystem objects will be detected - no other command forms.
-* a warning to that effect is printed; you can suppress it with `-p`
-
-## Quick Examples
+## Examples
 
 ```shell
 # Print information about the current shell.
@@ -57,22 +63,65 @@ BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk
 $ typex npm
 SCRIPT:     /usr/bin/npm@ -> /usr/lib/node_modules/npm/bin/npm-cli.js  (js script)  [1.4.28]
 
+# Print information about an alias:
+$ alias lsx='ls -FAhl'
+$ typex lsx
+ALIAS:      lsx='ls -FAhl'
+  BINARY:     /bin/ls  [ls (GNU coreutils) 8.21]
+
+# Print the canonical path of a directory:
+$ typex /etc/apache2/
+DIRECTORY:  /etc/apache2 -> /private/etc/apache2
+
 # Print extended information about special file /dev/null
 $ typex -v /dev/null
 FILE:       /dev/null  (character special )
 	crw-rw-rw- 1 root root 1, 3 Feb  1 19:43
+
 ```
 
 ## Installation
 
-With [node.js](http://nodejs.org/) installed, install via the [npm registry](https://www.npmjs.com/) (you may have to prepend `sudo`):
+**Supported platforms**
 
-	npm install typex -g
+* When installing from the **npm registry**: **Linux** and **OS X**
+* When installing **manually**: any **Unix-like** platform with **Bash** that uses either **BSD or GNU utilities**. 
+
+**Supported shells**
+
+For this utility to detect the current shell's aliases, keywords, (non-exported) shell functions, and builtins, it must be *sourced*, which is supported in the following shells:
+
+* **bash**, **ksh**, and **zsh**
+
+`typex` can still be useful in unsupported shells when invoked standalone (in which case it runs in `bash`), albeit in limited form:
+
+* only executable *files* and filesystem objects will be detected - no other command forms.
+* a warning to that effect is printed; you can suppress it with `-p`
+
+### From the npm registry
+
+With [Node.js](http://nodejs.org/) or [io.js](https://iojs.org/) installed, install [the package](https://www.npmjs.com/package/typex) as follows:
+
+    [sudo] npm install typex -g
+
+**Note**:
+
+* Whether you need `sudo` depends on how you installed Node.js / io.js and whether you've [changed permissions later](https://docs.npmjs.com/getting-started/fixing-npm-permissions); if you get an `EACCES` error, try again with `sudo`.
+* The `-g` ensures [_global_ installation](https://docs.npmjs.com/getting-started/installing-npm-packages-globally) and is needed to put `typex` in your system's `$PATH`.
 
 **IMPORTANT**: After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
 To remove these sourcing commands later, run `typex -u`.
 
 As stated, `typex` can still be useful when _not_ sourced, but functionality is limited to inspecting _external_ utilities and filesystem objects.
+
+### Manual installation
+
+* Download [this `bash` script](https://raw.githubusercontent.com/mklement0/typex/stable/bin/typex) as `typex`.
+* Make it executable with `chmod +x typex`.
+* Move it or symlink it to a folder in your `$PATH`, such as `/usr/local/bin` (OS X) or `/usr/bin` (Linux).
+
+**IMPORTANT**: After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
+To remove these sourcing commands later, run `typex -u`.
 
 ## Usage
 
@@ -147,7 +196,10 @@ DESCRIPTION
   ALIAS:
     Prints the alias's definition. If the first token of the alias' 
     definition is itself a command, information about that command is
-    printed as well, potentially recursively.
+    printed as well, in indented form, potentially recursively.
+    No attempt is made to detect additional commands inside the alias
+    definition.
+    -v is never applied to the recursive calls.
 
   KEYWORD:
     A shell-language keyword, such as `while`; the name is printed.
@@ -217,6 +269,10 @@ EXAMPLES
   $ typex -p nawk mawk
   BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
   BINARY:     /usr/bin/mawk  [2014-03-24]
+    # Define an alias and print information about it.
+  $ alias lsx='ls -FAhl'; typex lsx
+  ALIAS:      lsx='ls -FAhl'
+    BINARY:     /bin/ls  [ls (GNU coreutils) 8.21]
 ```
 
 <!-- DO NOT EDIT THE NEXT CHAPTER and RETAIN THIS COMMENT: The next chapter is updated by `make update-readme/release` with the contents of 'LICENSE.md'. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
@@ -229,12 +285,13 @@ Copyright (c) 2015 Michael Klement <mklement0@gmail.com> (http://same2u.net), re
 
 This project gratefully depends on the following open-source components, according to the terms of their respective licenses.
 
-[npm](https://www.npmjs.com/) dependencies below have optional suffixes denoting the type of dependency; the absence of a suffix denotes a required run-time dependency: `(D)` denotes a development-time-only dependency, `(O)` an optional dependency, and `(P)` a peer dependency.
+[npm](https://www.npmjs.com/) dependencies below have optional suffixes denoting the type of dependency; the _absence_ of a suffix denotes a required _run-time_ dependency: `(D)` denotes a _development-time-only_ dependency, `(O)` an _optional_ dependency, and `(P)` a _peer_ dependency.
 
 <!-- DO NOT EDIT THE NEXT CHAPTER and RETAIN THIS COMMENT: The next chapter is updated by `make update-readme/release` with the dependencies from 'package.json'. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
 
 ### npm dependencies
 
+* [doctoc (D)](https://github.com/thlorenz/doctoc)
 * [json (D)](https://github.com/trentm/json)
 * [replace (D)](https://github.com/harthur/replace)
 * [semver (D)](https://github.com/npm/node-semver#readme)
@@ -249,8 +306,14 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.3.0](https://github.com/mklement0/typex/compare/v0.2.1...v0.3.0)** (2015-06-10):
+  * [behavior change, enhancement] When reporting on an alias, information about the underlying command is now output with indentation, so as to make it clear that the information is subordinate to the alias information.
+  * [fix] Reporting on an alias' underlying command no longer causes additional command forms of the same name to be ignored.
+  * [fix] Obtaining a file's last-modified timestamp no longer breaks with filenames with embedded spaces.
+  * [doc] Read-me improvements.
+
 * **v0.2.1** (2015-05-30):
-  * [doc] [npm registry badge[(https://badge.fury.io) added
+  * [doc] [npm registry badge](https://badge.fury.io) added
 
 * **v0.2.0** (2015-05-24):
   * [enhancement] Now by default prints information about the _current shell_ (if no names are given).

@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "An extended version of the `type` builtin in Unix shells that incorporates features from the `which` and `file` utilities.",
   "private": false,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "os": [
     "darwin",
     "linux"
@@ -39,10 +39,17 @@
   "author": "Michael Klement <mklement0@gmail.com> (http://same2u.net)",
   "license": "MIT",
   "devDependencies": {
+    "doctoc": "^0.13.0",
     "json": "^9.0.3",
     "replace": "^0.3.0",
     "semver": "^4.2.0",
     "shall": "^0.2.1",
     "urchin": "^0.0.5"
+  },
+  "net_same2u": {
+    "make_pkg": {
+      "tocOn": true,
+      "tocTitle": "**Contents**"
+    }
   }
 }

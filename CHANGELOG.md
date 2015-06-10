@@ -4,8 +4,14 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.3.0](https://github.com/mklement0/typex/compare/v0.2.1...v0.3.0)** (2015-06-10):
+  * [behavior change, enhancement] When reporting on an alias, information about the underlying command is now output with indentation, so as to make it clear that the information is subordinate to the alias information.
+  * [fix] Reporting on an alias' underlying command no longer causes additional command forms of the same name to be ignored.
+  * [fix] Obtaining a file's last-modified timestamp no longer breaks with filenames with embedded spaces.
+  * [doc] Read-me improvements.
+
 * **v0.2.1** (2015-05-30):
-  * [doc] [npm registry badge[(https://badge.fury.io) added
+  * [doc] [npm registry badge](https://badge.fury.io) added
 
 * **v0.2.0** (2015-05-24):
   * [enhancement] Now by default prints information about the _current shell_ (if no names are given).

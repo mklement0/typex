@@ -125,7 +125,7 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
     # COMPATIBILITY
     #   Linux and BSD platforms (including OSX)
     function __typex_getFileTimestamp {
-      command typeset file=$1 kind=${2:-m} outFmt=$3 fmtOptChar= fmtChar= osNdx=
+      command typeset file="$1" kind="${2:-m}" outFmt="$3" fmtOptChar= fmtChar= osNdx= # !! Due to use of command, variable values *must* be *double-quoted* here.
       osNdx=0 # BSD platforms
       [[ $(command uname) == 'Linux' ]] && osNdx=1
       fmtOptChar='fc'
@@ -367,7 +367,10 @@ DESCRIPTION
   ALIAS:
     Prints the alias's definition. If the first token of the alias' 
     definition is itself a command, information about that command is
-    printed as well, potentially recursively.
+    printed as well, in indented form, potentially recursively.
+    No attempt is made to detect additional commands inside the alias
+    definition.
+    -v is never applied to the recursive calls.
 
   KEYWORD:
     A shell-language keyword, such as \`while\`; the name is printed.
@@ -437,19 +440,23 @@ EXAMPLES
   \$ $thisFuncName -p nawk mawk
   BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
   BINARY:     /usr/bin/mawk  [2014-03-24]
+    # Define an alias and print information about it.
+  \$ alias lsx='ls -FAhl'; $thisFuncName lsx
+  ALIAS:      lsx='ls -FAhl'
+    BINARY:     /bin/ls  [ls (GNU coreutils) 8.21]
 
 EOF
       return 0
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.2.1"; echo "$thisFuncName version ${ver#v}"; return 0; }
+    [[ $1 == '--version' ]] && { ver="v0.3.0"; echo "$thisFuncName version ${ver#v}"; return 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
 
     # !! zsh requires that all declarations be assigned a value, otherwise it *prints* variable definitions.
-    command typeset CDPATH= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= ignoreNotFound=0 found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
+    command typeset CDPATH= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
 
     # Parse options
     command typeset opt= OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
@@ -551,224 +558,221 @@ EOF
     numNotFound=0
     for name in "${names[@]}"; do
 
-      ignoreNotFound=0
-      while :; do # re-entry loop for dynamically discovered alias targets
+      found=0
+      [[ $name == */* ]] && isExplicitPath=1 || isExplicitPath=0
 
-        found=0
-        [[ $name == */* ]] && isExplicitPath=1 || isExplicitPath=0
+      # -- BEGIN: look for NON-file command forms
+      if (( ! (fileSystemOnly || isExplicitPath) )); then
 
-        # -- BEGIN: look for NON-file command forms
-        if (( ! (fileSystemOnly || isExplicitPath) )); then
-
-          # First check: is name a *shell keyword*? Note that it's still possible to define aliases and 
-          # even functions (only with the `function funcName { ... }` syntax) of the same name.
-          isKeyword=0
-          if [[ -n $KSH_VERSION ]]; then
-            command whence -a "$name" 2>/dev/null | command egrep -q ' keyword$' && isKeyword=1
-          elif [[ -n $ZSH_VERSION ]]; then
-            command type -wa "$name" 2>/dev/null | command egrep -q ' reserved$' && isKeyword=1
-          else # bash
-            command type -ta "$name" 2>/dev/null | command fgrep -qx 'keyword' && isKeyword=1
-          fi
-          if (( isKeyword )); then
-              found=1
-              keywordOutput=$(command printf '%-10s  %s' 'KEYWORD:' "$name")
-          fi
-
-          # ksh (also dash): keyword has HIGHER precedence than alias.
-          if [[ -n $keywordOutput && -n $KSH_VERSION ]]; then
-            command printf '%s\n' "$keywordOutput"
-          fi
-
-          # Alias? 
-          def=$(command alias "$name" 2>/dev/null)
-          if [[ -n $def ]]; then
-              command printf '%-10s  %s\n' 'ALIAS:' "${def#alias }"
-              (( all )) || { __typex_restore; return 0; }
-              # Extract the alias' first token.
-              def=$(cut -d= -f2- <<<"$def" | tr -d \'\" | cut -d' ' -f1)
-              # Resume the dummy loop to examine the alias' target as well.
-              ignoreNotFound=1 # since alias don't necessarily start with a command, we ignore failure to identify then.
-              name=$def
-              continue  
-          fi
-
-          # bash, zsh: keyword has LOWER precedence than alias.
-          if [[ -n $keywordOutput && -z $KSH_VERSION ]]; then
-            command printf '%s\n' "$keywordOutput"
-          fi
-
-          # Shell function?
-          def=$(command typeset -f "$name" 2>/dev/null) # get function definition
-          if [[ -n $def ]]; then  # if a function, print its name followed by ()
-              command printf '%-10s  %s' 'FUNCTION:' "$name()"
-              if [[ -n $BASH_VERSION ]]; then # bash only: if it's an exported function, append '  # -x' 
-                command declare -F | command egrep -q -- "-fx $name\$" && command printf '  # -x'
-              fi
-              command printf '\n'
-              # if in verbose mode: print function definition (source code) too.
-              (( verbose )) && command sed 's/^/  /' <<<"$def"
-              (( all )) || { __typex_restore; return 0; }
-              found=1
-          fi
-
-          # Builtin? 
-          if [[ -n $KSH_VERSION ]]; then
-            # !! ksh: if a function shadows a builtin, `type -a` inexplicably doesn't report the builtin, so we must test differently.
-            # !!      In ksh - unlike in bash and zsh - running `builtin` without arguments lists all defined builtins, so we look in its output.
-            command builtin | command fgrep -qx -- "$name" && isBuiltIn=1
-          elif [[ -n $ZSH_VERSION ]]; then
-            # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
-            # !! -w prints a more terse description
-            command type -wa -- "$name" 2>/dev/null | command egrep -q ':\s+builtin$' && isBuiltIn=1
-          else # bash
-            # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
-            # -t prints one-word descriptions; without it, shell functions are printed with their full definition, which could lead to false positives.
-            command type -ta -- "$name" 2>/dev/null | command fgrep -qx 'builtin' && isBuiltIn=1
-          fi
-          if (( isBuiltIn )); then
-              command printf '%-10s  %s\n' 'BUILTIN:' "$name"
-              (( all )) || { __typex_restore; return 0; }
-              found=1
-          fi
+        # First check: is name a *shell keyword*? Note that it's still possible to define aliases and 
+        # even functions (only with the `function funcName { ... }` syntax) of the same name.
+        isKeyword=0
+        if [[ -n $KSH_VERSION ]]; then
+          command whence -a "$name" 2>/dev/null | command egrep -q ' keyword$' && isKeyword=1
+        elif [[ -n $ZSH_VERSION ]]; then
+          command type -wa "$name" 2>/dev/null | command egrep -q ' reserved$' && isKeyword=1
+        else # bash
+          command type -ta "$name" 2>/dev/null | command fgrep -qx 'keyword' && isKeyword=1
         fi
-        # -- END: look for NON-file command forms
-
-        # [Executable] file or directory?
-        files=
-        if (( isExplicitPath )) || [[ $name == '.' ]]; then
-          if [[ -d $name ]]; then   # directory
-            # Convert to full path (without resolving symlinks).
-            files=$(command cd "$name" && command echo "$PWD")
-            # Further analysis happens below.
-          elif [[ -e $name ]]; then # file or symlink to file or special file (block device, character devie, pipe, socket) - we all treat them the same here and rely on `file` to provide type info below.
-            # Convert to full path (without resolving symlinks).
-            files="$(command cd "$(command dirname "$name")" && command echo "${PWD%/}/")$(command basename "$name")"
-            # Further analysis happens below.
-          else
-            : # We assume this means the path doesn't exist and report it below.
-          fi
-        else
-          # Get ALL files in the $PATH, using `which -a`.
-          if [[ -n $ZSH_VERSION ]]; then
-            # !! zsh: -p is needed to only consider FILES, not also OTHER command forms, such as functions (which would print as their full definitions) - not needed for bash and ksh (which do not even support -p).
-            files=$(command which -ap -- "$name" 2>/dev/null) || files='' # !! `which -ap` under certain circumstances, e.g. `which -ap while`, prints its error message to *stdout*, so we make sure to only capture output in case of *success*.
-          else  
-            files=$(command which -a -- "$name" 2>/dev/null) || files=''
-          fi
-        fi
-        if [[ -n $files ]]; then # executables matching the name found
-
+        if (( isKeyword )); then
             found=1
-            while command read -r file; do  # !! zsh: options[posixbuiltins] must be ON for `command read` to work as expected - see above.
-              
-              fileType=$(command file -Lb -- "$file") # determine file-type info of the file, or, in case of a symlink, its ultimate target
-              if [[ -d $file ]]; then
-                fileCategory='DIRECTORY:'
-              elif [[ -x $file ]]; then
-                # See if the executable is a *script* (an executable text file, normally with a shebang line)
-                scriptType=$(command egrep -o '(POSIX )?(\w+ )script' <<<"$fileType")
-                # `file` reports shebang-less scripts as text files rather than a script - we create our own type description.
-                [[ -z $scriptType ]] && command egrep -q '\<text\>' <<<"$fileType" && scriptType='script w/o shebang line'
-                [[ -n $scriptType ]] && fileCategory='SCRIPT:' || fileCategory='BINARY:'
-              else
-                fileCategory='FILE:'
-              fi
-
-              # Print the full path and, if applicable, symlink chain.
-              # Note that we always examine ALL paths, not just symlinks, because even non-symlinks
-              # can have symlink component (directories) in their *path*.
-              fileLinkChain=$(__typex_rreadlinkchain "$file")
-              if [[ ! $fileLinkChain =~ $'\n' ]]; then  # $file is NOT a symlink, but may contain symlinks in its path.
-                trueFile=$fileLinkChain
-                if [[ "$file" != "$trueFile" ]]; then # $file has at least 1 symlink component (directory) in its path.
-                  # Note that, unlike with targeting a symlink directly, we only print *ultimate* target path in this case.
-                  command printf '%-10s  %s -> %s' "$fileCategory" "$file" "$fileLinkChain"
-                else # $file has no symlink components in its path
-                  # Print the file's full path (only).
-                  command printf '%-10s  %s' "$fileCategory" "$file"            
-                fi
-              else # $file is itself a SYMLINK
-                # A symlink: resolve the *entire* chain of symlinks `ls -F`-style, but with *full* paths; e.g.: 
-                #     /usr/local/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/gawk
-                # __typex_rreadlinkchain() reads the chain of links: from given link to (ultimate) target.                
-                trueFile=$(command tail -n 1 <<<"$fileLinkChain")
-                #  The `awk` command replaces the newlines with ' -> 'and terminates every field but the last with "@" to mark it as a symlink.
-                #  Note: `gsub("\n$", "")` makes sure that the last line has no trailing \n - gawk, for instance, apparently always appends one.
-                command printf '%-10s  %s' "$fileCategory" "$(command awk -v RS= -v sep=' -> ' '{ gsub("\n$", ""); gsub("\n", "@" sep); printf "%s", $0 }' <<<"$fileLinkChain")"
-              fi
-
-              # Append script-type/non-executable-file-type info and, for executables, version info, if available.
-              if [[ -d $file ]]; then
-                  : # n/a
-              elif [[ -x $file ]]; then
-
-                # For executable *scripts*, append script-interpreter information (e.g., 'bash script')
-                [[ -n $scriptType ]] && printf '  (%s)' "$scriptType"
-
-                # For executables: Try to obtain version information, unless suppressed.
-                ver=
-                if (( ! noVersion )); then
-                  # Note that we only keep the 1st line (some utilities - e.g., gawk - output multiple lines).
-                  # !! Blindly invoking with --version is somewhat fragile, in that poorly designed executables that don't actually support --version
-                  # !! could ignore the option and do their own thing, including waiting for input. We try to avoid that by passing /dev/null to stdin.
-                  # !! Still, the invocation could block for other reasons or even perform unwanted tasks.
-                  # !! Even if it doesn't block and produces output, that output may or may not be version information.
-                  # !! Some utilities, such as ksh and /usr/bin/time, inexplicably report version information on std*err*.
-                  # !! Given the variety of version information, we can only perform a crude check to rule out obvious non-version strings.
-                  # !! Note that we only look at the first nonempty line.
-                  ver=$("$file" --version </dev/null 2>&1 | command sed '/^$/d; q' | command fgrep -v -- '--version' | command fgrep -vi -- $'unknown\ninvalid\nillegal\nunrecognized\nnot recognized' | command egrep -i -e '[0-9]\.' -e 'version' -e 'build' )
-                fi
-                # If lookup of version information was suppressed or no version info was found,
-                # use *the file's last-modified timestamp* as a substitute.
-                # Note: We use the last-modified timestamp rather than the file-creation ('birth') date, because the latter is not always available on Linux platforms.
-                [[ -z $ver ]] && ver=$(__typex_getFileTimestamp "$trueFile" m '%Y-%m-%d')
-                # Print version / last-modified info.
-                printf '  [%s]' "$ver"                        
-              
-              else # non-executable file
-                # Append file-type information.
-                printf '  (%s)' "$fileType"
-              fi
-
-              # If in verbose mode: 
-              if (( verbose )); then
-                # Add file stats via `ls -l` (in case of a symlink: for each file in the symlink chain)
-                while command read -r thisfile; do            
-                  command printf '\n  %s' "$(command ls -dFAhl -- "$thisfile" | command cut -d/ -f1)"
-                done <<<"${fileLinkChain:-$file}"
-                # Add additional information for executables.
-                if [[ ! -d $file ]]; then
-                  if [[ -n $scriptType ]]; then # for a script, print the shebang line (for shebang-less files, this will simply be whatever the 1st line happens to be).
-                    command printf '\n  %s' "$(command head -n 1 "$file")"
-                  elif [[ -x $file ]]; then # for an executable binary, output file-type information (architecture, ...)
-                    command printf '\n  %s' "$(sed '1! s/^/  /' <<<"$fileType")" # some binaries produce multi-line input
-                  fi
-                fi
-              fi
-
-              command printf '\n'
-
-              (( all )) || break  # not ALL paths requested? we're done after the first pass.
-
-            done <<<"$files"
+            keywordOutput=$(command printf '%-10s  %s' 'KEYWORD:' "$name")
         fi
 
-        # If not found, print error message.
-        if (( ! found && ! ignoreNotFound )); then
-          (( ++numNotFound ))
-          if (( isExplicitPath )); then
-            errMsgSuffix=": No such file or directory, or insufficient permissions for inspection."
-          else
-            (( fileSystemOnly )) && errMsgSuffix=' is not an executable in the PATH.' || errMsgSuffix=' is neither an alias, keyword, function, builtin, nor an executable in the PATH.'
-            [[ -e $name ]] && errMsgSuffix+=$'\nHowever, it does exist as a filesystem item in the current directory. To target that, prefix with \"./\"'
-          fi
-          command printf '%s\n' "$thisFuncName: \"${name}\"${errMsgSuffix}" >&2
+        # ksh (also dash): keyword has HIGHER precedence than alias.
+        if [[ -n $keywordOutput && -n $KSH_VERSION ]]; then
+          command printf '%s\n' "$keywordOutput"
         fi
 
-        break # break out of the dummy loop to process the next $name
+        # Alias? 
+        def=$(command alias "$name" 2>/dev/null)
+        if [[ -n $def ]]; then
+            found=1
+            command printf '%-10s  %s\n' 'ALIAS:' "${def#alias }"
+            (( all )) || { __typex_restore; return 0; }
+            # Extract the alias' first token.
+            def=$(cut -d= -f2- <<<"$def" | tr -d \'\" | cut -d' ' -f1)
 
-      done # dummy loop for re-entry for single-token aliases
+            # Recurse on the alias' first token to also print the underlying command's definition, 
+            # and indent the output to show that is subordinate information. 
+            # Note:
+            #  - Since aliases don't necessarily start with a command, we quietly ignore failure.
+            #  - To prevent bloat in the output, we do not pass through -v, if it was specified, to the recursive call.
+            typex -- "$def" 2>/dev/null | sed 's/^/  /'
+        fi
+
+        # bash, zsh: keyword has LOWER precedence than alias.
+        if [[ -n $keywordOutput && -z $KSH_VERSION ]]; then
+          command printf '%s\n' "$keywordOutput"
+        fi
+
+        # Shell function?
+        def=$(command typeset -f "$name" 2>/dev/null) # get function definition
+        if [[ -n $def ]]; then  # if a function, print its name followed by ()
+            found=1
+            command printf '%-10s  %s' 'FUNCTION:' "$name()"
+            if [[ -n $BASH_VERSION ]]; then # bash only: if it's an exported function, append '  # -x' 
+              command declare -F | command egrep -q -- "-fx $name\$" && command printf '  # -x'
+            fi
+            command printf '\n'
+            # if in verbose mode: print function definition (source code) too.
+            (( verbose )) && command sed 's/^/  /' <<<"$def"
+            (( all )) || { __typex_restore; return 0; }
+        fi
+
+        # Builtin? 
+        if [[ -n $KSH_VERSION ]]; then
+          # !! ksh: if a function shadows a builtin, `type -a` inexplicably doesn't report the builtin, so we must test differently.
+          # !!      In ksh - unlike in bash and zsh - running `builtin` without arguments lists all defined builtins, so we look in its output.
+          command builtin | command fgrep -qx -- "$name" && isBuiltIn=1
+        elif [[ -n $ZSH_VERSION ]]; then
+          # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
+          # !! -w prints a more terse description
+          command type -wa -- "$name" 2>/dev/null | command egrep -q ':\s+builtin$' && isBuiltIn=1
+        else # bash
+          # Check for builtins; note use of `-a` to print *all* types, in case a function shadows the builtin.
+          # -t prints one-word descriptions; without it, shell functions are printed with their full definition, which could lead to false positives.
+          command type -ta -- "$name" 2>/dev/null | command fgrep -qx 'builtin' && isBuiltIn=1
+        fi
+        if (( isBuiltIn )); then
+            command printf '%-10s  %s\n' 'BUILTIN:' "$name"
+            (( all )) || { __typex_restore; return 0; }
+            found=1
+        fi
+      fi
+      # -- END: look for NON-file command forms
+
+      # [Executable] file or directory?
+      files=
+      if (( isExplicitPath )) || [[ $name == '.' ]]; then
+        if [[ -d $name ]]; then   # directory
+          # Convert to full path (without resolving symlinks).
+          files=$(command cd "$name" && command echo "$PWD")
+          # Further analysis happens below.
+        elif [[ -e $name ]]; then # file or symlink to file or special file (block device, character devie, pipe, socket) - we all treat them the same here and rely on `file` to provide type info below.
+          # Convert to full path (without resolving symlinks).
+          files="$(command cd "$(command dirname "$name")" && command echo "${PWD%/}/")$(command basename "$name")"
+          # Further analysis happens below.
+        else
+          : # We assume this means the path doesn't exist and report it below.
+        fi
+      else
+        # Get ALL files in the $PATH, using `which -a`.
+        if [[ -n $ZSH_VERSION ]]; then
+          # !! zsh: -p is needed to only consider FILES, not also OTHER command forms, such as functions (which would print as their full definitions) - not needed for bash and ksh (which do not even support -p).
+          files=$(command which -ap -- "$name" 2>/dev/null) || files='' # !! `which -ap` under certain circumstances, e.g. `which -ap while`, prints its error message to *stdout*, so we make sure to only capture output in case of *success*.
+        else  
+          files=$(command which -a -- "$name" 2>/dev/null) || files=''
+        fi
+      fi
+      if [[ -n $files ]]; then # executables matching the name found
+
+          found=1
+          while command read -r file; do  # !! zsh: options[posixbuiltins] must be ON for `command read` to work as expected - see above.
+            
+            fileType=$(command file -Lb -- "$file") # determine file-type info of the file, or, in case of a symlink, its ultimate target
+            if [[ -d $file ]]; then
+              fileCategory='DIRECTORY:'
+            elif [[ -x $file ]]; then
+              # See if the executable is a *script* (an executable text file, normally with a shebang line)
+              scriptType=$(command egrep -o '(POSIX )?(\w+ )script' <<<"$fileType")
+              # `file` reports shebang-less scripts as text files rather than a script - we create our own type description.
+              [[ -z $scriptType ]] && command egrep -q '\<text\>' <<<"$fileType" && scriptType='script w/o shebang line'
+              [[ -n $scriptType ]] && fileCategory='SCRIPT:' || fileCategory='BINARY:'
+            else
+              fileCategory='FILE:'
+            fi
+
+            # Print the full path and, if applicable, symlink chain.
+            # Note that we always examine ALL paths, not just symlinks, because even non-symlinks
+            # can have symlink component (directories) in their *path*.
+            fileLinkChain=$(__typex_rreadlinkchain "$file")
+            if [[ ! $fileLinkChain =~ $'\n' ]]; then  # $file is NOT a symlink, but may contain symlinks in its path.
+              trueFile=$fileLinkChain
+              if [[ "$file" != "$trueFile" ]]; then # $file has at least 1 symlink component (directory) in its path.
+                # Note that, unlike with targeting a symlink directly, we only print *ultimate* target path in this case.
+                command printf '%-10s  %s -> %s' "$fileCategory" "$file" "$fileLinkChain"
+              else # $file has no symlink components in its path
+                # Print the file's full path (only).
+                command printf '%-10s  %s' "$fileCategory" "$file"            
+              fi
+            else # $file is itself a SYMLINK
+              # A symlink: resolve the *entire* chain of symlinks `ls -F`-style, but with *full* paths; e.g.: 
+              #     /usr/local/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/gawk
+              # __typex_rreadlinkchain() reads the chain of links: from given link to (ultimate) target.                
+              trueFile=$(command tail -n 1 <<<"$fileLinkChain")
+              #  The `awk` command replaces the newlines with ' -> 'and terminates every field but the last with "@" to mark it as a symlink.
+              #  Note: `gsub("\n$", "")` makes sure that the last line has no trailing \n - gawk, for instance, apparently always appends one.
+              command printf '%-10s  %s' "$fileCategory" "$(command awk -v RS= -v sep=' -> ' '{ gsub("\n$", ""); gsub("\n", "@" sep); printf "%s", $0 }' <<<"$fileLinkChain")"
+            fi
+
+            # Append script-type/non-executable-file-type info and, for executables, version info, if available.
+            if [[ -d $file ]]; then
+                : # n/a
+            elif [[ -x $file ]]; then
+
+              # For executable *scripts*, append script-interpreter information (e.g., 'bash script')
+              [[ -n $scriptType ]] && printf '  (%s)' "$scriptType"
+
+              # For executables: Try to obtain version information, unless suppressed.
+              ver=
+              if (( ! noVersion )); then
+                # Note that we only keep the 1st line (some utilities - e.g., gawk - output multiple lines).
+                # !! Blindly invoking with --version is somewhat fragile, in that poorly designed executables that don't actually support --version
+                # !! could ignore the option and do their own thing, including waiting for input. We try to avoid that by passing /dev/null to stdin.
+                # !! Still, the invocation could block for other reasons or even perform unwanted tasks.
+                # !! Even if it doesn't block and produces output, that output may or may not be version information.
+                # !! Some utilities, such as ksh and /usr/bin/time, inexplicably report version information on std*err*.
+                # !! Given the variety of version information, we can only perform a crude check to rule out obvious non-version strings.
+                # !! Note that we only look at the first nonempty line.
+                ver=$("$file" --version </dev/null 2>&1 | command sed '/^$/d; q' | command fgrep -v -- '--version' | command fgrep -vi -- $'unknown\ninvalid\nillegal\nunrecognized\nnot recognized' | command egrep -i -e '[0-9]\.' -e 'version' -e 'build' )
+              fi
+              # If lookup of version information was suppressed or no version info was found,
+              # use *the file's last-modified timestamp* as a substitute.
+              # Note: We use the last-modified timestamp rather than the file-creation ('birth') date, because the latter is not always available on Linux platforms.
+              [[ -z $ver ]] && ver=$(__typex_getFileTimestamp "$trueFile" m '%Y-%m-%d')
+              # Print version / last-modified info.
+              printf '  [%s]' "$ver"                        
+            
+            else # non-executable file
+              # Append file-type information.
+              printf '  (%s)' "$fileType"
+            fi
+
+            # If in verbose mode: 
+            if (( verbose )); then
+              # Add file stats via `ls -l` (in case of a symlink: for each file in the symlink chain)
+              while command read -r thisfile; do            
+                command printf '\n  %s' "$(command ls -dFAhl -- "$thisfile" | command cut -d/ -f1)"
+              done <<<"${fileLinkChain:-$file}"
+              # Add additional information for executables.
+              if [[ ! -d $file ]]; then
+                if [[ -n $scriptType ]]; then # for a script, print the shebang line (for shebang-less files, this will simply be whatever the 1st line happens to be).
+                  command printf '\n  %s' "$(command head -n 1 "$file")"
+                elif [[ -x $file ]]; then # for an executable binary, output file-type information (architecture, ...)
+                  command printf '\n  %s' "$(sed '1! s/^/  /' <<<"$fileType")" # some binaries produce multi-line input
+                fi
+              fi
+            fi
+
+            command printf '\n'
+
+            (( all )) || break  # not ALL paths requested? we're done after the first pass.
+
+          done <<<"$files"
+      fi
+
+      # If not found, print error message.
+      if (( ! found )); then
+        (( ++numNotFound ))
+        if (( isExplicitPath )); then
+          errMsgSuffix=": No such file or directory, or insufficient permissions for inspection."
+        else
+          (( fileSystemOnly )) && errMsgSuffix=' is not an executable in the PATH.' || errMsgSuffix=' is neither an alias, keyword, function, builtin, nor an executable in the PATH.'
+          [[ -e $name ]] && errMsgSuffix+=$'\nHowever, it does exist as a filesystem item in the current directory. To target that, prefix with \"./\"'
+        fi
+        command printf '%s\n' "$thisFuncName: \"${name}\"${errMsgSuffix}" >&2
+      fi
 
     done # for name in names
 

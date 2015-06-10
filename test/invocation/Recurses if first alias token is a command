@@ -1,0 +1,9 @@
+#!/usr/bin/env shall -l bash,ksh,zsh
+
+PATH="../../bin:$PATH"
+
+unset -f ls
+unalias ls
+alias lsx='ls -FAhl'
+
+. typex lsx | grep -Eq $'^ALIAS:\n^  BINARY:'
