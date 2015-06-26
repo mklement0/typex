@@ -112,8 +112,6 @@ With [Node.js](http://nodejs.org/) or [io.js](https://iojs.org/) installed, inst
 **IMPORTANT**: After installation, run `typex -i` to add sourcing of `typex` to the per-user initialization file of all supported shells that are present (e.g., `~/.bashrc`).
 To remove these sourcing commands later, run `typex -u`.
 
-As stated, `typex` can still be useful when _not_ sourced, but functionality is limited to inspecting _external_ utilities and filesystem objects.
-
 ### Manual installation
 
 * Download [this `bash` script](https://raw.githubusercontent.com/mklement0/typex/stable/bin/typex) as `typex`.
@@ -306,11 +304,15 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.3.1](https://github.com/mklement0/typex/compare/v0.3.0...v0.3.1)** (2015-06-26):
+  * [dev] Makefile updated; to-do file added; typo in source-code comment fixed.
+  * [doc] Minor read-me revision.
+
 * **[v0.3.0](https://github.com/mklement0/typex/compare/v0.2.1...v0.3.0)** (2015-06-10):
   * [behavior change, enhancement] When reporting on an alias, information about the underlying command is now output with indentation, so as to make it clear that the information is subordinate to the alias information.
   * [fix] Reporting on an alias' underlying command no longer causes additional command forms of the same name to be ignored.
   * [fix] Obtaining a file's last-modified timestamp no longer breaks with filenames with embedded spaces.
-  * [doc] Read-me improvements.
+  * [doc] Read-me improvements; version badge switched to shields.io; license badge added.
 
 * **v0.2.1** (2015-05-30):
   * [doc] [npm registry badge](https://badge.fury.io) added

@@ -16,7 +16,7 @@
 
 # -------- BEGIN: POSIX SYNTAX ONLY
 # !! The purpose of this block is to determine, if this script is being *sourced*, whether the sourcing shell is a *supported shell* and *fail gracefully, if not*.
-# !! Thus, the code in this block most execute in [mostly] POSIX-features-only shells (e.g., dash) too.
+# !! Thus, the code in this block must execute in [mostly] POSIX-features-only shells (e.g., dash) too.
 # !! Therefore, 
 # !!   - only POSIX syntax is used, in particular: POSIX-style function declarations (e.g., foo() rather than function foo)
 # !!   - NO variables at all, because - due to lack of local variables in POSIX shells - they'd end up in the global namespace.
@@ -450,7 +450,7 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.3.0"; echo "$thisFuncName version ${ver#v}"; return 0; }
+    [[ $1 == '--version' ]] && { ver="v0.3.1"; echo "$thisFuncName version ${ver#v}"; return 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
