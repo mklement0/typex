@@ -92,7 +92,7 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
 
       while :; do
           # Unless the file is a symlink OR exists, we report an error - note that using `-e` with a symlink reports the *target*'s existence, not the symlink's.
-        [[ -L $target || -e $target ]] || { printf '%s\n' "typex: ERROR: '$target' does not exist." 1>&2; return 1; }
+        [[ -L $target || -e $target ]] || { printf '%s\n' "typex: WARNING: '$target' does not exist." 1>&2; return 1; }
           # !! We use `cd` to change to the target's folder
           # !! so we can correctly resolve the full dir. path.
         cd "$(dirname -- "$target")" # note: cd "" is the same as cd . - i.e., a no-op.
@@ -450,13 +450,13 @@ EOF
     fi
 
     # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.3.1"; echo "$thisFuncName version ${ver#v}"; return 0; }
+    [[ $1 == '--version' ]] && { ver="v0.3.2"; echo "$thisFuncName version ${ver#v}"$'\nFor license information and more, visit https://github.com/mklement0/typex'; return 0; }
 
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
 
     # !! zsh requires that all declarations be assigned a value, otherwise it *prints* variable definitions.
-    command typeset CDPATH= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
+    command typeset CDPATH= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= brokenSymlink=0 extraOpt= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
 
     # Parse options
     command typeset opt= OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
@@ -649,9 +649,17 @@ EOF
           # Convert to full path (without resolving symlinks).
           files=$(command cd "$name" && command echo "$PWD")
           # Further analysis happens below.
-        elif [[ -e $name ]]; then # file or symlink to file or special file (block device, character devie, pipe, socket) - we all treat them the same here and rely on `file` to provide type info below.
+        elif [[ -e $name || -L $name ]]; then # file or symlink to file or special file (block device, character devie, pipe, socket) - we all treat them the same here and rely on `file` to provide type info below.
+          # !! If -L $name is true, but -e $name isn't, $name is a broken (dangling) symlink.
+          # !! We still proceed with inspecting the symlink itself.
+          [[ ! -e $name ]] && brokenSymlink=1
           # Convert to full path (without resolving symlinks).
-          files="$(command cd "$(command dirname "$name")" && command echo "${PWD%/}/")$(command basename "$name")"
+          # !! Note: There is an obscure bug in ksh 93u+ when passing paths such as ../.foo to cd - it fails and complains about
+          # !! <full path>/foo (!) not existing - the '.' in '.foo' is dropped.
+          # !! We work around it by prepending $PWD.
+          [[ -n $KSH_VERSION && $name =~ ^'../.' ]] && name="${PWD%/}/$name"
+          files=$(command cd -- "$(command dirname -- "$name")" && command echo "${PWD%/}/")$(command basename -- "$name")
+          [[ $files =~ / ]] || return 1  # this should never happen, except if the ksh workaround above isn't effective
           # Further analysis happens below.
         else
           : # We assume this means the path doesn't exist and report it below.
@@ -670,7 +678,11 @@ EOF
           found=1
           while command read -r file; do  # !! zsh: options[posixbuiltins] must be ON for `command read` to work as expected - see above.
             
-            fileType=$(command file -Lb -- "$file") # determine file-type info of the file, or, in case of a symlink, its ultimate target
+            # Unless we're dealing with a broken symlink, we want to examine the *target* of a symlink.
+            # !! BSD `file` detects a broken symlink even with -L, while GNU `file` does not: it treats the symlink like a non-existent file (and defaults to NOT following symlinks by default, unlike its BSD cousin).
+            # Both BSD and GNU `file` report something like `broken symbolic link to ...` for broken symlinks.
+            (( brokenSymlink )) || extraOpt='-L' 
+            fileType=$(command file -b $extraOpt -- "$file") # determine file-type info of the file, or, in case of a symlink, its ultimate target
             if [[ -d $file ]]; then
               fileCategory='DIRECTORY:'
             elif [[ -x $file ]]; then
@@ -685,18 +697,18 @@ EOF
 
             # Print the full path and, if applicable, symlink chain.
             # Note that we always examine ALL paths, not just symlinks, because even non-symlinks
-            # can have symlink component (directories) in their *path*.
-            fileLinkChain=$(__typex_rreadlinkchain "$file")
+            # can have symlink components (directories) in their *path*.
+            fileLinkChain=$(__typex_rreadlinkchain "$file") # !! with a broken symlink, this will output an error message 
             if [[ ! $fileLinkChain =~ $'\n' ]]; then  # $file is NOT a symlink, but may contain symlinks in its path.
               trueFile=$fileLinkChain
               if [[ "$file" != "$trueFile" ]]; then # $file has at least 1 symlink component (directory) in its path.
-                # Note that, unlike with targeting a symlink directly, we only print *ultimate* target path in this case.
+                # Note that, unlike with targeting a symlink directly, we only print the *ultimate* target path in this case.
                 command printf '%-10s  %s -> %s' "$fileCategory" "$file" "$fileLinkChain"
               else # $file has no symlink components in its path
                 # Print the file's full path (only).
                 command printf '%-10s  %s' "$fileCategory" "$file"            
               fi
-            else # $file is itself a SYMLINK
+            else # $file is itself a SYMLINK (possibly a broken one)
               # A symlink: resolve the *entire* chain of symlinks `ls -F`-style, but with *full* paths; e.g.: 
               #     /usr/local/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/awk@ -> /usr/local/Cellar/gawk/4.1.0/bin/gawk
               # __typex_rreadlinkchain() reads the chain of links: from given link to (ultimate) target.                
@@ -734,7 +746,7 @@ EOF
               # Print version / last-modified info.
               printf '  [%s]' "$ver"                        
             
-            else # non-executable file
+            else # non-executable file, including broken symlinks
               # Append file-type information.
               printf '  (%s)' "$fileType"
             fi

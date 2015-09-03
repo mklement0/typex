@@ -125,7 +125,7 @@ To remove these sourcing commands later, run `typex -u`.
 
 <!-- DO NOT EDIT THE FENCED CODE BLOCK and RETAIN THIS COMMENT: The fenced code block below is updated by `make update-readme/release` with CLI usage information. -->
 
-```
+```nohighlight
 $ typex --help
 
 SYNOPSIS
@@ -303,6 +303,9 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
+
+* **[v0.3.2](https://github.com/mklement0/typex/compare/v0.3.1...v0.3.2)** (2015-09-03):
+  * [fix] Broken (dangling) symlinks are now properly detected and reported.
 
 * **[v0.3.1](https://github.com/mklement0/typex/compare/v0.3.0...v0.3.1)** (2015-06-26):
   * [dev] Makefile updated; to-do file added; typo in source-code comment fixed.

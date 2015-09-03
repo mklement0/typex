@@ -2,6 +2,4 @@
 
 PATH="../../bin:$PATH"
 
-stdErr=$(. typex ../.fixtures/'filename with spaces' 2>&1 >/dev/null) || exit
-[[ -z $stdErr ]] || exit
-
+. typex ../.fixtures/'filename with spaces' || exit
