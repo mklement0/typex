@@ -4,6 +4,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.3.3](https://github.com/mklement0/typex/compare/v0.3.2...v0.3.3)** (2015-09-15):
+  * [dev] Makefile improvements; various other behind-the-scenes tweaks.
+
 * **[v0.3.2](https://github.com/mklement0/typex/compare/v0.3.1...v0.3.2)** (2015-09-03):
   * [fix] Broken (dangling) symlinks are now properly detected and reported.
 
