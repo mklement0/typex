@@ -15,7 +15,7 @@
 #       but NOT aliases, functions, builtins - a warning to that effect is printed.
 
 # -------- BEGIN: POSIX SYNTAX ONLY
-# !! The purpose of this block is to determine, if this script is being *sourced*, whether the sourcing shell is a *supported shell* and *fail gracefully, if not*.
+# !! The purpose of this block is to determine, when this script is being *sourced*, whether the sourcing shell is a *supported shell* and *fail gracefully, if not*.
 # !! Thus, the code in this block must execute in [mostly] POSIX-features-only shells (e.g., dash) too.
 # !! Therefore, 
 # !!   - only POSIX syntax is used, in particular: POSIX-style function declarations (e.g., foo() rather than function foo)
@@ -52,6 +52,7 @@ __typex_isSupportedShell || { printf '%s\n' "ERROR: This script can only be sour
 
 
 # Store the absolute path of this script in a SHELL-GLOBAL variable.
+# In other words: if this script is being *sourced*, this WILL CREATE A GLOBAL VARIABLE FOR THE REMAINDER OF THE SOURCING (TYPICALLY INTERACTIVE) SHELL.
 # Note: This is necessary, because determining the originating script later, from the already-sourced typex() function, won't work in *nested* functions in zsh (as of 5.0.5).
 [ -n "$BASH_SOURCE" ] && __typex_scriptpath=$BASH_SOURCE
 [ -n "$KSH_VERSION" ] && __typex_scriptpath=${.sh.file}
@@ -60,12 +61,22 @@ __typex_isSupportedShell || { printf '%s\n' "ERROR: This script can only be sour
 [ -n "$KSH_VERSION" ] || __typex_scriptpath=$(CDPATH= cd "$(command dirname -- "$__typex_scriptpath")" && command printf '%s' "${PWD%/}/")$(command basename -- "$__typex_scriptpath")
 
 
-# --- Main function to be sourced.
+# --- MAIN FUNCTION to be SOURCED.
 function typex  # !! Note the non-POSIX function syntax to ensure that ksh variables declared with `typeset` are *local* variables.
 { 
 
+    # ---
+    # Delegate handling STANDARD options, which don't require being sourced, to the *script* so as to keep this *function* small.
+    # ---
+    case $1 in
+      -h|--help|--version|--man|--man-source|--home)
+        "$__typex_scriptpath" "$@"
+        return
+        ;;
+    esac
+
     # ---- BEGIN: NESTED HELPER FUNCTIONS
-    # ----
+    # ---- Note that, despite being nested, they're still put in the GLOBAL namespace ON FIRST INVOCATION of the hosting function (at least in Bash).
 
     # SYNOPSIS
     #   __typex_rreadlinkchain symLink
@@ -162,32 +173,50 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
     }
 
     # SYNOPSIS
+    #   __typex_reMatch string regex [outVarName]
+    # DESCRIPTION
+    #   Regex-matching routine that returns a BASH_REMATCH-style array in the specified output variable (named for the function by default).
+    function __typex_reMatch {  # Note the use of `function` syntax to ensure that ksh variables declared with typeset are truly local.
+      command typeset ec= outVar="${3:-__typex_reMatch}"
+      unset -v "$outVar" # initialize output variable
+      [[ $1 =~ $2 ]] # perform the regex test
+      ec=$? # save exit code
+      if [[ $ec -eq 0 ]]; then # copy result to output variable
+        [[ -n $BASH_VERSION ]] && eval "$outVar"'=( "${BASH_REMATCH[@]}" )'
+        [[ -n $KSH_VERSION ]] && eval "$outVar"'=( "${.sh.match[@]}" )'
+        [[ -n $ZSH_VERSION ]] && eval "$outVar"'=( "$MATCH" "${match[@]}" )'
+      fi
+      return $ec
+    }
+
+    # SYNOPSIS
     #   __typex_reQuote <text>
     # DESCRIPTION
     #   Escapes the specified literal text for use in an *extended* regular expression.
     # EXAMPLE
-    #   reQuote 'Cost(*): $3.'  # -> 'Cost\(\*\): \$3\.'
+    #   __typex_reQuote 'Cost^(*): $3.'  # -> '[C][o][s][t]\^[(][*][)][:][ ][$][3][.]'
     # Note that the input is assumed to be a literal to be escaped as is - no existing escaping is recognized.
-    # (The sed regex is *1* big character class containing all chars. to escape.)
-    __typex_reQuote() { command sed 's#[][(){}^$.*?+\|]#\\&#g' <<<"$*"; }
-
+    function __typex_reQuote { command sed 's/[^^]/[&]/g; s/\^/\\^/g' <<<"$*"; }
 
     # SYNOPSIS
-    #   __typex_install <targetShellFilename> <doInstall> <runningStandalone> <scriptFileAbsPath> [<verbose>]   # <scriptFileAbsPath> = this script's absolute file path
-    # Installs/uninstalls sourcing of this script in the current shell's initialization file.
+    #   __typex_install <targetShellFilename> <doInstall> <runningStandalone> <scriptFileAbsPath>   # <scriptFileAbsPath> = this script's absolute file path
+    # Installs/uninstalls sourcing of this script in the specified shell's user-specific initialization file.
     function __typex_install {
-      command typeset targetShellFilename=$1 install=$2 runningStandalone=$3 scriptFileAbsPath=$4 verbose=${5:-0} scriptFileAbsPathQ= initFile= lineNumFoundAt= cmd= cmt= ec=
+      command typeset targetShellFilename=$1 install=$2 runningStandalone=$3 scriptFileAbsPath=$4
+      command typeset verbose=1 scriptFileAbsPathQ= initFile= instLineRegEx= found=0 cmd= cmt= ec= newContents=
+
+      command typeset dir=${TYPEX_TEST_INITFILE_DIR:-~} # all init files are in the user's home folder, unless overriden for testing with an env. var.
 
       case "$targetShellFilename" in
         'bash')
           # !! Sadly, bash ONLY reads ~/.bash_profile in LOGIN shells, and on OSX (Darwin) ALL shells are login shells, so on OSX we must target ~/.bash_profile.
-          [[ $(uname) == 'Darwin' ]] && initFile=~/.bash_profile || initFile=~/.bashrc
+          [[ $(uname) == 'Darwin' ]] && initFile="$dir/.bash_profile" || initFile="$dir/.bashrc"
           ;;
         'ksh')
-          initFile=~/.kshrc
+          initFile="$dir/.kshrc"
           ;;
         'zsh')
-          initFile=~/.zshrc
+          initFile="$dir/.zshrc"
           ;;
         *) 
           printf '%s\n' "ERROR: ${scriptFileAbsPath##*/} can only be sourced in bash, ksh, or zsh -- $targetShell is not supported." >&2
@@ -201,44 +230,34 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
       cmd="[[ -f $scriptFileAbsPathQ ]] && . $scriptFileAbsPathQ"
       cmt="# Added by ${scriptFileAbsPath##*/} -i; ${scriptFileAbsPath##*/} -u to remove."
 
-      # See if command is already present in target file and, if so, get its line number.
+      # See if command is already present in target file.
       # Note: We only search by the naked command, not including the comment, to have the freedom to change the comment's wording later.
       #       For some additional flexibility, we ignore any whitespace at the start of the line.
-      [[ -f $initFile ]] && lineNumFoundAt=$(egrep -m1 -n '^[[:space:]]*'"$(__typex_reQuote "$cmd")"'([[:space:]]|$)' "$initFile" | cut -d: -f1) || lineNumFoundAt=0
+      instLineRegEx='^[[:space:]]*'"$(__typex_reQuote "$cmd")"'([[:space:]]|$)'
+      [[ -f $initFile ]] && command grep -Eq "$instLineRegEx" "$initFile" && found=1
 
       # Add to / remove the sourcing command from the initialization file.
-      # !! We use `ed` to perform the updates, as it is safer to use than `sed -i`, in that it respects symlinks and truly edits the underlying file instead of replacing
-      # !! the symlink with a regular file of the same name.
-      # !! Using `command ed` to invoke is crucial, because on some Linux distros such as Debian `ed` isn't actually installed, but merely an alias of `nano` which breaks our function.
+      # !! We do not use `sed -i` to update the file, as that would replace the original file's inode and thereby 
+      # !! potentially destroy symlinks (and lose the original creation date and extended attributes on OSX).
+      # !! `ed` is an option in principle, but, unfortunately, not all platforms have it (e.g., Fedora).
+      # !! Therefore, we simply use >> and > to append to / rewrite the file, which preserves the original inode.
       ec=0
       if (( install )); then
-        if (( lineNumFoundAt > 0 )); then # already installed
+        if (( found )); then # already installed
             (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' already present in '$initFile'; nothing to do.)"
         else
-          # Append line to file.
-          [[ -f $initFile ]] || : >"$initFile" || { command printf '%s\n' "ERROR: Failed to create shell initialization file '$initFile'. Please create it manually and add line '. $scriptFileAbsPath'." >&2; return 1; }
-          command ed -s "$initFile" <<EOF # ed script: append an empty line, followed by the sourcing command; '.' terminates the text to append, 'w' saves the file.
-a
-
-$cmd $cmt
-.
-w
-EOF
+          # Append line to file (create it, if necessary).
+          printf '\n%s %s\n' "$cmd" "$cmt"  >> "$initFile"
           ec=$?
         fi
       else # uninstall
-        if (( lineNumFoundAt == 0 )); then # already uninstalled
+        if (( ! found )); then # already uninstalled
           (( verbose )) && command printf '%s\n' "(Sourcing command for '$scriptFileAbsPath' not present in '$initFile'; nothing to do.)"
         else
-          # Remove line from file; note the need to silence stdout, because ed's 'd' command outputs the line being deleted.
-          command ed -s "$initFile" >/dev/null <<EOF  # ed script: jumpt to file to remove, delete it, and if the line above (now-current line '.') is empty, delete that too; 'w' saves the file.
-$lineNumFoundAt
-d
-. g/^$/d
-w
-EOF
+          # Remove line from file.
+          newContents=$(command grep -Ev "$instLineRegEx" "$initFile") && command printf '%s\n' "$newContents" > "$initFile"
           ec=$?
-          # Also undefine the sourced *function*.
+          # Also undefine the sourced *function*, if currently defined.
           unset -f ${scriptFileAbsPath##*/} 2>/dev/null  
         fi
       fi
@@ -262,21 +281,28 @@ EOF
     # Change shell options, if necessary, and save their state.
     # !! Shell-global variables must be used to save the state - prefix them with __typex_ to avoid name collisions.
     function __typex_init {
-      # zsh only: set configuration item that makes `command` invoke builtins, too.
-      [[ -n $ZSH_VERSION ]] && { __typex_prevPosixBuiltinsOptState=$options[posixbuiltins]; options[POSIX_BUILTINS]=on; } || unset __typex_prevPosixBuiltinsOptState
+      [[ -n $ZSH_VERSION ]] && { # zsh only
+        # Set configuration item that makes `command` invoke builtins, too.
+        __typex_prevPosixBuiltinsOptState=${options[posixbuiltins]}; options[POSIX_BUILTINS]=on;
+        # Set configuration items that makes Zsh arrays behave like Ksh / Bash items, notably to use base index *0*.
+        __typex_prevKshArrayEmulationOptState=${options[ksharrays]}; options[ksharrays]=on;
+      } || unset __typex_prevPosixBuiltinsOptState __typex_prevKshArrayEmulationSOpttate
     }
 
     # Restore changed configuration options, if any.
+    # !! ALL EXIT POINTS OF THIS FUNCTION MUST CALL THIS.
+    # !! Sadly, if the function BREAKS, we don't get a chance to do this.
     function __typex_restore {
       # Restore all options that were changed in __typex_init().
       [[ -n $__typex_prevPosixBuiltinsOptState ]] && options[posixbuiltins]=$__typex_prevPosixBuiltinsOptState
+      [[ -n $__typex_prevKshArrayEmulationOptState ]] && options[ksharrays]=$__typex_prevKshArrayEmulationOptState
     }
+
 
     # ----
     # ---- END: NESTED HELPER FUNCTIONS
 
-
-    # PREREQUISITE FOR ALL REMAINING FUNCTION CALLS:
+    # IMPORTANT:
     # !! In the code below, given that it is typically *sourced*, we try to *guard against 
     # !! aliases and shell functions shadowing builtins and standard utilities*. 
     # !! For standard utilities, `command someUtil ...` can be used.
@@ -285,13 +311,15 @@ EOF
     # !! (Using `builtin` to invoke builtins is, unfortunately, not an option, because in ksh it serves a different purpose.)
     # !! Given that this function is typically *sourced*, we must *save and restore* changed shell options, which we do
     # !! with functions __typex_init() and __typex_restore()
-    # !! UPSHOT:
-    # !!   - Below, *any standard utility or builtin must be called with prefix `command `*.
+    # -------------------
+    # !! UPSHOT: THROUGH THE REMAINDER OF THIS FUNCTION,
+    # !!   - *any standard utility or builtin must be called with prefix `command `*.
     # !!   - { __typex_restore; return [<n>]; } must be used *everywhere* in lieu of just `return` to return from this function.
+    # -------------------
     __typex_init
 
     # Determine this function's name.
-    # !! In ksh, this variable will NOT be available inside NESTED functions.
+    # !! We do this here, because in ksh $FUNCNAME is NOT available inside NESTED functions.
     command typeset thisFuncName=$([[ -n $BASH_VERSION ]] && command printf %s "$FUNCNAME" || command printf %s "$0")
 
     # Look for the special, private option that the top-level script code passes in to signal
@@ -299,206 +327,98 @@ EOF
     command typeset notSourced=0
     [[ $1 == '--not-sourced' ]] && { shift; notSourced=1; }
 
-    if [[ "$1" == '--help' || "$1" == '-h' ]]; then
-      cat <<EOF
-SYNOPSIS
-  $thisFuncName [-p] [-V] [-v] [name ...]
-  $thisFuncName -i|-u
-
-DESCRIPTION
-  An extended version of the \`type\` utility that incorporates elements
-  of the \`which\` and \`file\` utilities.
-  
-  Determines if NAME refers to one or more of the following command forms: 
-    alias, shell keyword, shell function, builtin, or
-    executable file in the PATH
-  Provides more information than \`type -a\`, notably executable
-  type, symlink chains, and version information.
-
-  Alternatively, NAME may be a *filesystem path* rather than a mere (file)name,
-  in which case information about that path is reported.
-
-  Not specying any NAME prints information about the current shell.
-
-  NOTE: For this utility to detect the current shell's aliases, keywords,
-        (non-exported) shell functions, and builtins, it must be 
-        *sourced*, which is supported in the following shells:
-           bash, ksh, zsh
-        
-        Sourcing this utility without arguments in your shell's per-user
-        initialization file will define a function of the same name that
-        will be available throughout the session.
-         - $thisFuncName -i installs this sourcing for all supported shells,
-         - $thisFuncName -u uninstalls it.
-
-        Ad-hoc and in scripts, you can source and invoke at the same time;
-        e.g.:
-          . $thisFuncName read
-
-        If you instead invoke this utility directly:
-         - only executable *files* will be detected - no other command forms;
-         - a warning to that effect is printed; suppress it with -p.
-
-  -p
-    Only looks for (executable) *files* (ignores aliases, keywords, functions,
-    and builtins). This option applies implicity if NAME is a filesystem path
-    rather than a mere command name.
-
-  -V
-    Suppresses the attempt to obtain version information from executable
-    files. Helpful if you know that the target file doesn't support --version,
-    or you're wary of what invocation with --version might do.
-
-  -v
-    Verbose mode: prints additional information - see below.
-
-  Note that, unless you specified a filesystem path, ALL defined forms of a 
-  given command name are reported, in order of precedence (highest first).
-    bash, zsh: alias > shell keyword > shell function > builtin > executable
-    ksh:       shell keyword > alias > shell function > builtin > executable
-
-  All output starts with a headword identifying the command form / path type,
-  as in the description below.
-  Output for each command form is single-line, except for the optional
-  information added by -v; the latter is indented with 2 spaces.
-  The exit code is 0 if all NAMEs were found, the number of non-existent
-  NAMES otherwise.
-
-  ALIAS:
-    Prints the alias's definition. If the first token of the alias' 
-    definition is itself a command, information about that command is
-    printed as well, in indented form, potentially recursively.
-    No attempt is made to detect additional commands inside the alias
-    definition.
-    -v is never applied to the recursive calls.
-
-  KEYWORD:
-    A shell-language keyword, such as \`while\`; the name is printed.
-
-  FUNCTION:
-    Prints the function name, followed by '()'; e.g., 'foo()'.
-    In bash, if the function is also exported, ' # -x' is appended.
-
-    With -v specified:
-      The function definition (its source code) is printed, too.
-
-  BUILTIN:
-    Prints the builtin's name.
-
-  BINARY / SCRIPT / DIRECTORY / FILE:
-    Prints files' full path, and, in the case of a symlink, the *entire
-    symlink chain to the ultimate target file*, using full paths.
-
-    If the file is not itself a symlink, but has symlink components
-    (directories) in its *path*, the input path is printed as well
-    as the canonical path with all symlinks resolved.
-
-    If the file is an executable script, interpreter information is
-    appended in parentheses; e.g., '(bash script)'.
-    If the file is non-executable, file-type information obtained with
-    \`file\` is appended in parentheses; e.g., '(ASCII text)'.
-    If the file is a special file such as /dev/null, its type is also
-    appended in parentheses; e.g., '(character special)'.
-    
-    Unless -V was specified, an attempt is made to obtain version information
-    through invocation of the executable file with --version.
-    If -V was specified, or if no version information was found, the
-    last-modified timestamp of the (ultimate target) file is used.
-    Whatever information is available is appended in square brackets; e.g.,
-    '[ls (GNU coreutils) 8.21]' or '[2014-09-09]'
-
-    With -v specified:
-      File statistics (permissions, owner, ...) are printed, using \`ls -l\`.
-      For symlinks, this happens for every file in the symlink chain.
-      Additional information printed for executables:
-       - binaries: file-type information obtained with \`file\`.
-       - scripts: the shebang line.
-  
-COMPATIBILITY
-  Platforms supported in principle:
-    OSX, Linux, BSD (with bash installed)
-  Among those, sourcing the script (recommmended) works in the following
-  shells:
-    bash, ksh, zsh
-
-EXAMPLES
-    # Print info about the current shell.
-  \$ $thisFuncName 
-  BINARY:     /bin/bash  [GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin14)]
-    # Print info about utility 'awk' and its symlink chain:
-  \$ $thisFuncName awk  
-  BINARY:     /usr/bin/awk@ -> /etc/alternatives/awk -> /usr/bin/gawk [GNU Awk 4.0.1]
-    # Print information about command forms named 'printf' in order of 
-    # precedence:
-  \$ $thisFuncName printf
-  BUILTIN:    printf
-  BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8.21]
-    # Print information about script 'npm':
-  \$ $thisFuncName -p npm
-  SCRIPT:     /usr/local/bin/npm  (node script)  [2.1.7]
-    # Print information about executables 'nawk' and 'mawk':
-  \$ $thisFuncName -p nawk mawk
-  BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
-  BINARY:     /usr/bin/mawk  [2014-03-24]
-    # Define an alias and print information about it.
-  \$ alias lsx='ls -FAhl'; $thisFuncName lsx
-  ALIAS:      lsx='ls -FAhl'
-    BINARY:     /bin/ls  [ls (GNU coreutils) 8.21]
-
-EOF
-      return 0
-    fi
-
-    # Output version number and exit, if requested. Note that the `ver="..."` statement is automatically updated by `make version VER=<newVer>`.
-    [[ $1 == '--version' ]] && { ver="v0.3.3"; echo "$thisFuncName version ${ver}"$'\nFor license information and more, visit https://github.com/mklement0/typex'; return 0; }
-
     # Note: For convenience, we ALWAYS print ALL defined forms of a given name.
     command typeset all=1
 
     # !! zsh requires that all declarations be assigned a value, otherwise it *prints* variable definitions.
     command typeset CDPATH= numNotFound=0 name= names= isExplicitPath=0 isKeyword=0 keywordOutput= def= found=0 isBuiltIn=0 specialFileType= brokenSymlink=0 extraOpt= files= file= thisfile= fileCategory= fileType= scriptType= ver= fileLinkChain= trueFile= errMsgSuffix= shell=
 
-    # Parse options
-    command typeset opt= OPTIND= OPTARG= # !! Sometimes, these aren't reset automatically between runs.
-    # !! The following must mirror the option chars. passed to `getopts` and the long variable names mapped to them.
-    command typeset p=0 V=0 v=0 i=0 u=0 
+    # ----- BEGIN: OPTIONS PARSING:
     command typeset fileSystemOnly=0 noVersion=0 verbose=0 install=0 uninstall=0
-    while command getopts 'pVviu' opt; do  # $opt will receive the option *letters* one by one; a trailing : means that an option-argument is required.
-      [[ $opt == '?' ]] && { __typex_restore; return 2; } # Invalid option or missing option argument - getopts has already printed an error to stderr for us, we just exit.
-      command typeset $opt=${OPTARG:-1} # Define a variable named for the option, assumed to be Boolean by default.
+    command typeset allowOptsAfterOperands=1 i=0 optName= isLong=0 prefix= optArg= haveOptArgAttached=0 haveOptArgAsNextArg=0 acceptOptArg=0 needOptArg=0
+    command typeset -a operands # Note: For the sake of Ksh, explicitly declare this as an array, 
+    __typex_reMatch=  # Array variable that receives regex-matching info; !! MUST NOT BE DECLARED WITH TYPESET, as it is assigned to in __typex_reMatch(), which in Ksh can only assign to a GLOBAL variable.
+    while (( $# )); do
+      if __typex_reMatch "$1" '^(-)[a-zA-Z0-9]+.*$' || __typex_reMatch "$1" '^(--)[a-zA-Z0-9]+.*$'; then # an option: either a short option / multiple short options in compressed form, or a long option
+        # Note: In Zsh, options[ksharrays] is assumed to be ON so that array subscripts start with 0, as in Bash / Ksh.
+        prefix=${__typex_reMatch[1]}; [[ $prefix == '--' ]] && isLong=1 || isLong=0
+        for (( i = 1; i < (isLong ? 2 : ${#1}); i++ )); do
+            command typeset acceptOptArg=0 needOptArg=0 haveOptArgAttached=0 haveOptArgAsNextArg=0 optArgAttached= optArgOpt= optArgReq=
+            if (( isLong )); then # long option: parse into name and, if present, argument
+              optName=${1:2}
+              __typex_reMatch "$optName" '^([^=]+)=(.*)$' && { optName=${__typex_reMatch[1]}; optArgAttached=${__typex_reMatch[2]}; haveOptArgAttached=1; }
+            else # short option: *if* it takes an argument, the rest of the string, if any, is by definition the argument.
+              # Note: For the sake of Zsh, use $-prefixed variable references as subscripts; e.g., `${1:$i:1}` rather than `${1:i:1}`.
+              optName=${1:$i:1}; optArgAttached=${1:$i+1}; (( ${#optArgAttached} >= 1 )) && haveOptArgAttached=1
+            fi
+            (( haveOptArgAttached )) && optArgOpt=$optArgAttached optArgReq=$optArgAttached || { (( $# > 1 )) && { optArgReq=$2; haveOptArgAsNextArg=1; }; }
+            # ---- BEGIN: CUSTOMIZE HERE        
+            case $optName in
+              p|files-only)
+                fileSystemOnly=1
+                ;;
+              v|verbose)
+                verbose=1
+                ;;
+              V|skip-version)
+                noVersion=1
+                ;;
+              i|install-sourcing)
+                install=1
+                ;;
+              u|uninstall-sourcing)
+                uninstall=1
+                ;;
+              *)
+                  { echo "$thisFuncName: ARGUMENT ERROR: Unknown option: ${prefix}${optName}" >&2; __typex_restore; return 2; }
+                ;;
+            esac
+            # ---- END: CUSTOMIZE HERE
+            (( needOptArg )) && { (( ! haveOptArgAttached && ! haveOptArgAsNextArg )) && { echo "$thisFuncName: ARGUMENT ERROR: Option ${prefix}${optName} is missing its argument." >&2; __typex_restore; return 2; } || (( haveOptArgAsNextArg )) && shift; }
+            (( acceptOptArg || needOptArg )) && break
+        done
+      else # an operand
+        if [[ $1 == '--' ]]; then
+          shift; operands+=( "$@" ); break
+        elif (( allowOptsAfterOperands )); then
+          operands+=( "$1" ) # continue 
+        else
+          operands=( "$@" )
+          break
+        fi
+      fi
+      shift
     done
-    shift $((OPTIND - 1)) # Skip the already-processed arguments (options).
-    fileSystemOnly=$p # Note: The absence of the -p option may trigger a warning below in case the *script* was invoked directly with arguments rather than this *function*, after having been sourced.
-    noVersion=$V
-    verbose=$v
-    install=$i
-    uninstall=$u
+    (( ${#operands[@]} > 0 )) && set -- "${operands[@]}"; unset allowOptsAfterOperands operands i optName isLong prefix optArgAttached haveOptArgAttached haveOptArgAsNextArg acceptOptArg needOptArg
+    # --- End: OPTIONS PARSING: "$@" now contains all operands (non-option arguments).
 
-    if (( install || uninstall )); then # install in / uninstall from the default shell's user-specific initialization file.
-      (( !fileSystemOnly && !noVersion && !(install && uninstall) )) || { echo "$thisFuncName: ARGUMENT ERROR: Incompatible options specified." >&2; __typex_restore; return 2; }
+    if (( install || uninstall )); then # install in / uninstall from supported shells' user-specific initialization file.
+      (( !fileSystemOnly && !noVersion && !(install && uninstall) && $# == 0 )) || { echo "$thisFuncName: ARGUMENT ERROR: Incompatible options specified." >&2; __typex_restore; return 2; }
       (( uninstall )) && install=0
       # Install/uninstall sourcing for ALL supported shells, IF installed.
       # Note: By definition, at least *1* supported shell is present: bash - otherwise this script wouldn't execute (unless someone passes it to another shell as filename operand).
       command typeset shellCount=0 okCount=0
       for shell in bash ksh zsh; do
         (( ++shellCount ))
-        # Ignore, if the shell cannot be found.
-        if [[ -n $ZSH_VERSION ]]; then
-          command which -p $shell >/dev/null 2>&1 || continue
-        else
-          command which $shell >/dev/null 2>&1 || continue
+        # Ignore, if the shell cannot be found on this system.
+        if [[ $TYPEX_TEST_ALL_INITFILES != '1' ]]; then # override fore testing
+          if [[ -n $ZSH_VERSION ]]; then
+            command which -p $shell >/dev/null 2>&1 || continue
+          else
+            command which $shell >/dev/null 2>&1 || continue
+          fi
         fi
         # !! We must *explicitly* pass the following information:
         #   - whether this script is being sourced (nested functions in ksh don't see their parents' local variables).
         #   - this script's absolute path, as determining it inside a *nested* function doesn't work reliably in zsh (as of 5.0.5).
         # Also, we don't fail right away, so that the command can be attempted for all shells, and at least error messages are shown for each.
-        __typex_install $shell $install $notSourced "$__typex_scriptpath" $verbose && (( ++okCount ))
+        __typex_install $shell $install $notSourced "$__typex_scriptpath" && (( ++okCount ))
       done
       (( install && okCount )) && command printf '%s\n' 'Open a new shell tab or window for sourcing to take effect.'
       if (( okCount == shellCount )); then
-        return 0
+        __typex_restore; return 0
       else
-        return 1
+        __typex_restore; return $(( shellCount - okCount ))
       fi
     fi
 
@@ -535,21 +455,21 @@ EOF
       if __typex_isParentSupportedShell; then
         command cat >&2 <<EOF
 WARNING: FOR COMPLETE RESULTS, INSTALL SOURCING WITH \`${__typex_scriptpath##*/} -i\`.
-         You've invoked ${__typex_scriptpath##*/} directly as script, so the current shell's
-         aliases, keywords, functions, and builtins won't be detected.
+         You've invoked ${__typex_scriptpath##*/} directly as script, so the current shell's 
+         aliases, keywords, functions, and builtins cannot be detected.
          For complete results, run this script sourced:  \`. ${__typex_scriptpath##*/} <name>\`
          To install sourcing persistently for interactive shells, run
          \`${__typex_scriptpath##*/} -i\`.
          Use \`-p\` to suppress this warning if you're only looking for
-         [executable] files.
+         executable *files*.
 EOF
       else
         command cat >&2 <<EOF
-WARNING: ${__typex_scriptpath##*/} needs SOURCING to identify the current shell's
-         aliases, keywords, functions, and builtins.
+WARNING: ${__typex_scriptpath##*/} needs SOURCING to identify the current
+         shell's aliases, keywords, functions, and builtins.
          Unfortunately, it cannot be sourced in this shell, $(command basename "$(ps -o comm= $PPID)").
          Use \`-p\` to suppress this warning if you're only looking for
-         executable files.
+         executable *files*.
 EOF
       fi
     fi
@@ -659,7 +579,7 @@ EOF
           # !! We work around it by prepending $PWD.
           [[ -n $KSH_VERSION && $name =~ ^'../.' ]] && name="${PWD%/}/$name"
           files=$(command cd -- "$(command dirname -- "$name")" && command echo "${PWD%/}/")$(command basename -- "$name")
-          [[ $files =~ / ]] || return 1  # this should never happen, except if the ksh workaround above isn't effective
+          [[ $files =~ / ]] || { __typex_restore; return 1; } # this should never happen, except if the ksh workaround above isn't effective
           # Further analysis happens below.
         else
           : # We assume this means the path doesn't exist and report it below.
@@ -795,26 +715,426 @@ EOF
 
 
 # We only get here in 2 cases:
-#  - The script is being *sourced* by the current shell, in order to define the function of the same name for later use.
+#  - The script is being *sourced* by the current shell without arguments, solely in order to define the function of the same name for later use.
 #    Once sourced, invoking `typex` will invoke the *function directly*.
 #  - Either the script is being invoked *directly* (and, due to its shebang line, run by *bash*) or the script filenname was passed to a shell executable.
 #    Either way, the invoking shell's aliases and functions won't be visible.
-if (( $# )); then # Arguments were specified: most likely a direct, non-sourced invocation, but potentially a sourced invocation that *also* passes arguments.
 
-  # Determine if this script is being sourced in *addition* to arguments being passed.
-  if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && [[ $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then
-    typex "$@"       # This script is being sourced *and* invoked with arguments at the same time - useful for ad-hoc sourcing, such as when using typex in a script or when running something like `shall -c '. ./typex ...'. typex() remains defined as a - desirable - side effect.
-  else # This script is NOT being sourced; pass that fact to the implementing function via a private, special option - this will trigger a warning about not having access to *shell* definitions (only executable *files*).
-    typex --not-sourced "$@"    
+if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && [[ $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then  # script is being SOURCED
+
+  if (( $# > 0 )); then # This script is being sourced *and* invoked with arguments at the same time - useful for ad-hoc sourcing, such as when using typex in a script or when running something like `shall -c '. ./typex ...'. typex() remains defined as a - desirable - side effect.
+
+    typex "$@"  # innvoke typex()
+    return      # return, passing typex()'s exit code through.
+
+  else # This script is being sourced without arguments, solely to define the typex() function for later use.
+
+    # Nothing more to do; return, indicate success
+    return 0
+
   fi
 
-else # No arguments
+else # This script is NOT being sourced; either handle standard options such as --version, or run in non-sourced mode, which prevents reporting on aliases, functions, shell builtins.
 
-  if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && [[ $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then
-    : # Script is being *sourced* for *later* use of the typex() *function*.
-      # Since the function has already been defined at this point, there is nothing more to do.
-  else # NOT sourced: Pass invocation through to the typex() function, passing the private option to indicate non-sourced status.
-    typex --not-sourced
-  fi
+  # Handle STANDARD OPTIONS up front, HERE, WITHOUT INVOKING the FUNCTION typex().
+  # Note that an already-sourced typex() function indirectly calls this script
+  # (non-sourced) and ends up here as well for handling standard options.
+  #
+  # !! EVEN THOUGH THIS BLOCK IS ONLY *EXECUTED* BY BASH, IT IS STILL *PARSED*
+  # !! BY KSH AND ZSH, SO IT NEEDS TO BE VALID SYNTAX IN THOSE SHELLS TOO:
+  # !!  - use `typeset` instead of `local`
+  # !!  -use `>... 2>&1` instead of `&>`
+
+  # --- STANDARD SCRIPT-GLOBAL CONSTANTS
+
+  kTHIS_NAME=${BASH_SOURCE##*/}
+  kTHIS_HOMEPAGE='https://github.com/mklement0/typex'
+  kTHIS_VERSION='v0.4.0' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+
+  # --- Begin: STANDARD HELPER FUNCTIONS
+
+  # SYNOPSIS
+  #   openUrl <url>
+  # DESCRIPTION
+  #   Opens the specified URL in the system's default browser.
+  openUrl() {
+    typeset url=$1 platform=$(uname) cmd=()
+    case $platform in
+      'Darwin') # OSX
+        cmd=( open "$url" )
+        ;;
+      'CYGWIN_'*) # Cygwin on Windows; must call cmd.exe with its `start` builtin
+        cmd=( cmd.exe /c start '' "$url " )  # !! Note the required trailing space.
+        ;;
+      'MINGW32_'*) # MSYS or Git Bash on Windows; they come with a Unix `start` binary
+        cmd=( start '' "$url" )
+        ;;
+      *) # Otherwise, assume a Freedesktop-compliant OS, which includes many Linux distros, PC-BSD, OpenSolaris, ...
+        cmd=( xdg-open "$url" )
+        ;; 
+    esac
+    "${cmd[@]}" || { echo "Cannot locate or failed to open default browser; please go to '$url' manually." >&2; return 1; }
+  }
+
+  # Prints the embedded Markdown-formatted man-page source to stdout.
+  printManPageSource() {
+    sed -n -e $'/^: <<\'EOF_MAN_PAGE\'/,/^EOF_MAN_PAGE/ { s///; t\np;}' "$BASH_SOURCE"
+  }
+
+  # Opens the man page, if installed; otherwise, tries to display the embedded Markdown-formatted man-page source; if all else fails: tries to display the man page online.
+  openManPage() {
+    typeset pager embeddedText 
+    if ! man 1 "$kTHIS_NAME" 2>/dev/null; then
+      # 2nd attempt: if present, display the embedded Markdown-formatted man-page source
+      embeddedText=$(printManPageSource)
+      if [[ -n $embeddedText ]]; then
+        pager='more'
+        command -v less >/dev/null 2>&1 && pager='less' # see if the non-standard `less` is available, because it's preferable to the POSIX utility `more`
+        printf '%s\n' "$embeddedText" | "$pager"
+      else # 3rd attempt: open the the man page on the utility's website
+        openUrl "${kTHIS_HOMEPAGE}/doc/${kTHIS_NAME}.md"
+      fi
+    fi  
+  }
+
+  # Prints the contents of the synopsis chapter of the embedded Markdown-formatted man-page source for quick reference.
+  printUsage() {
+    typeset embeddedText
+    # Extract usage information from the SYNOPSIS chapter of the embedded Markdown-formatted man-page source.
+    embeddedText=$(sed -n -e $'/^: <<\'EOF_MAN_PAGE\'/,/^EOF_MAN_PAGE/!d; /^## SYNOPSIS$/,/^#/{ s///; t\np; }' "$BASH_SOURCE")
+    if [[ -n $embeddedText ]]; then
+      # Print extracted synopsis chapter - remove backticks for uncluttered display.
+      printf '%s\n\n' "$embeddedText" | tr -d '`'
+    else # No SYNOPIS chapter found; fall back to displaying the man page.
+      echo "WARNING: usage information not found; opening man page instead." >&2
+      openManPage
+    fi
+  }
+
+  # --- End: STANDARD HELPER FUNCTIONS
+
+  # ---  PROCESS STANDARD, OUTPUT-INFO-THEN-EXIT OPTIONS.
+  case $1 in
+    --version)
+      # Output version number and exit, if requested.
+      echo "$kTHIS_NAME $kTHIS_VERSION"$'\nFor license information and more, visit '"$kTHIS_HOMEPAGE"; exit 0
+      ;;
+    -h|--help)
+      # Print usage information and exit.
+      printUsage; exit
+      ;;
+    --man)
+      # Display the manual page and exit, falling back to printing the embedded man-page source.
+      openManPage; exit
+      ;;
+    --man-source) # private option, used by `make update-man`
+      # Print raw, embedded Markdown-formatted man-page source and exit
+      printManPageSource; exit
+      ;;
+    --home)
+      # Open the home page and exit.
+      openUrl "$kTHIS_HOMEPAGE"; exit
+      ;;
+  esac
+
+  # --- NON-SOURCED INVOCATION WITH OPTIONS OTHER THAN STANDARD OPTIONS:
+  # Pass all arguments through to the function, preceded by a private option 
+  # that tells typex() that it's being invoked NON-sourced.
+  # Note that this will trigger a warning, unless -p is among the arguments or
+  # all operands are filesystem paths.
+  typex --not-sourced "$@"
+  exit # exit, passing typex()'s exit code through
 
 fi
+
+
+# ---- END OF MAIN BODY
+
+####
+# MAN PAGE MARKDOWN SOURCE
+#  - Place a Markdown-formatted version of the man page for this script
+#    inside the here-document below.
+#    The document must be formatted to look good in all 3 viewing scenarios:
+#     - as a man page, after conversion to ROFF with marked-man
+#     - as plain text (raw Markdown source)
+#     - as HTML (rendered Markdown)
+#  Markdown formatting tips:
+#   - GENERAL
+#     To support plain-text rendering in the terminal, limit all lines to 80 chars.,
+#     and, for similar rendering as HTML, *end every line with 2 trailing spaces*.
+#   - HEADINGS
+#     - For better plain-text rendering, leave an empty line after a heading
+#       marked-man will remove it from the ROFF version.
+#     - The first heading must be a level-1 heading containing the utility
+#       name and very brief description; append the manual-section number 
+#       directly to the CLI name; e.g.:
+#         # foo(1) - does bar
+#     - The 2nd, level-2 heading must be '## SYNOPSIS' and the chapter's body
+#       must render reasonably as plain text, because it is printed to stdout
+#       when  `-h`, `--help` is specified:
+#         Use 4-space indentation without markup for both the syntax line and the
+#         block of brief option descriptions; represent option-arguments and operands
+#         in angle brackets; e.g., '<foo>'
+#     - All other headings should be level-2 headings in ALL-CAPS.
+#   - TEXT
+#      - Use NO indentation for regular chapter text; if you do, it will 
+#        be indented further than list items.
+#      - Use 4-space indentation, as usual, for code blocks.
+#      - Markup character-styling markup translates to ROFF rendering as follows:
+#         `...` and **...** render as bolded (red) text
+#         _..._ and *...* render as word-individually underlined text
+#   - LISTS
+#      - Indent list items by 2 spaces for better plain-text viewing, but note
+#        that the ROFF generated by marked-man still renders them unindented.
+#      - End every list item (bullet point) itself with 2 trailing spaces too so
+#        that it renders on its own line.
+#      - Avoid associating more than 1 paragraph with a list item, if possible,
+#        because it requires the following trick, which hampers plain-text readability:
+#        Use '&nbsp;<space><space>' in lieu of an empty line.
+####
+: <<'EOF_MAN_PAGE'
+# typex(1) - report salient information about commands, programs, and filesystem items
+
+## SYNOPSIS
+
+Reports salient information about available commands, programs, and  
+filesystem items, such as command or file type, (ultimate) location,  
+and version.
+
+    typex [-p] [-V] [-v] [<nameOrPath>...]
+
+    -p     look for files only (ignore shell aliases, keywords, functions,  
+           builtins)
+    -V     skip attempt to obtain executable version information
+    -v     verbose mode: report additional information
+
+Install / uninstall sourcing via shell-initialization files (required  
+to detect aliases, functions, shell builtins - supported in  
+Bash, Ksh, Zsh):
+
+    typex -i
+    typex -u
+
+
+## DESCRIPTION
+
+`typex` combines and extends features found in the standard `type`,  
+`which`, and  `file` utilities.
+
+Not specying any operands prints information about the current shell.
+
+When given a command name (as opposed to a filesystem path), the  
+following command forms are recognized:  
+
+  * shell aliases, shell keywords, shell functions, shell builtins, and  
+    executable files in the `$PATH`
+
+Alternatively, filesystem paths rather than mere (file)names may be  
+given, in which case extended information about theses paths is  
+reported.
+      
+NOTE: For this utility to detect shell-based command forms, it must be    
+*sourced*, which is supported in the following shells:  
+`bash`, `ksh`, and `zsh`  
+
+Sourcing this utility in your shell's per-user initialization file will  
+define a function of the same name that will be available in interactive  
+sessions:
+
+ * `typex -i` installs this sourcing for all supported shells.
+ * `typex -u` uninstalls it.
+
+Alternatively, you can source and invoke at the same time; e.g.:
+
+    . typex read
+
+If you instead invoke this utility directly (as a script):
+
+ * only executable *files* and filesystem items will be detected -  
+   no other command forms;
+ * a warning to that effect is printed, unless only filesystem paths are  
+   supplied; suppress it with `-p`.
+
+Unless you specify a filesystem path, ALL defined  
+forms of a given command name are reported, in order of precedence  
+(highest first; if this utility is invoked directly or `-p` is specified,  
+only executable *files* with that name are reported):
+
+  * `bash`, `zsh`:  
+     alias > shell keyword > shell function > builtin > executable
+
+  * `ksh`  
+     shell keyword > alias > shell function > builtin > executable
+
+The exit code is `0` if all operands were found, the number of  
+non-existent operands otherwise.
+
+Note: `typex` is designed for interactive use, to provide humans with  
+concise, salient information about a command or filesystem object.  
+As such, its output is geared toward readability by humans,  
+and should not be relied on for programmatic parsing.
+
+## OPTIONS
+
+  * `-p`, `--files-only`  
+    Only looks for (executable) *files* (ignores aliases, keywords,  
+    functions, and builtins).  
+    This option applies implicity if a given operand is a filesystem path  
+    rather than a mere command name.
+
+  * `-V`, `--skip-version`  
+    Suppresses the attempt to obtain version information from executable  
+    files. Helpful if you know that the target file doesn't support  
+    `--version, or you're wary of what invocation with `--version`  
+    might do.
+
+  * `-v`, `--verbose`  
+    Verbose mode: prints additional information - see below.
+
+  * `-i`, `--install-sourcing`  
+   Updates the user-specific shell-initialization files of all supported  
+   shells, if present, to include a command to source this utility,  
+   which is the prerequisite for it to be able to detect shell-based  
+   definitions, namely shell aliases, keywords, functions,  
+   and builtins.
+
+  * `-u`, `--uninstall-sourcing`  
+    Removes a previously installed sourcing command from the  
+    user-specific initialization files of supported shells.
+
+## OUTPUT FORMAT
+
+All output starts with a capitalized headword identifying the command  
+form / path type, as in the headings below.  
+Output for each command form is single-line, except for the optional  
+information added by `-v`; the latter is indented with 2 spaces.  
+
+### ALIAS
+
+Prints the shell alias's definition. If the first token of the alias's  
+definition is itself a command, information about that command is  
+printed as well, in indented form, potentially recursively.  
+No attempt is made to detect additional commands inside the alias  
+definition.  
+`-v` is never applied to the recursive calls.
+
+### KEYWORD
+
+A shell-language keyword, such as `while`; the name is printed.
+
+### FUNCTION
+  
+Prints the shell function name, followed by `()`; e.g., `foo()`.  
+In Bash, if the function is also exported, ` # -x` is appended.
+
+With `-v` specified:  
+The function definition (its source code) is printed, too.
+
+### BUILTIN
+  
+Prints the shell builtin's name.
+
+### BINARY / SCRIPT / DIRECTORY / FILE
+
+Prints files' full path, and, in the case of symlinks, the entire  
+symlink chain to the ultimate target file, using full paths.
+
+If the file is not itself a symlink, but has symlink components  
+(directories) in its directory path, both the full form of the input  
+path as well as the canonical path with all symlinks resolved are  
+printed.
+
+If the file is an executable script, interpreter information is  
+appended in parentheses; e.g., `(bash script)`.  
+If the file is non-executable, file-type information obtained with  
+`file` is appended in parentheses; e.g., `(ASCII text)`.  
+If the file is a special file such as `/dev/null`, its type is also  
+appended in parentheses; e.g., `(character special)`.
+  
+For executable files, unless `-V` is specified, an attempt is made  
+to obtain version information through invocation with `--version`.  
+If `-V` was specified, or if no version information was found, the  
+last-modified timestamp of the (ultimate target) file is used.  
+Whatever information is available is appended in square brackets; e.g.,  
+`[ls (GNU coreutils) 8.21]` or `[2014-09-09]`
+
+With `-v` specified:
+
+  * File statistics (permissions, owner, ...) are printed using `ls -l`.
+  * For symlinks, this happens for every file in the symlink chain.
+
+Additional information printed for executables:
+
+   * binaries: file-type information obtained with `file`.
+   * scripts: the shebang line.
+
+## STANDARD OPTIONS
+
+All standard options provide information only.
+
+ * `-h, --help`  
+   Prints the contents of the synopsis chapter to stdout for quick reference.
+
+ * `--man`  
+   Displays this manual page, which is a helpful alternative to using  
+   `man`, if the manual page isn't installed.
+
+ * `--version`  
+   Prints version information.
+  
+ * `--home`  
+   Opens this utility's home page in the system's default web browser.
+
+## COMPATIBILITY
+
+Platforms supported in principle:
+
+  * OSX, Linux, BSD (with Bash installed)
+  
+On those, sourcing the script (recommmended) works in the following  
+shells:
+
+  * Bash, Ksh, Zsh
+
+## LICENSE
+
+For license information, bug reports, and more, visit this utility's  
+home page by running `typex --home`
+
+## EXAMPLES
+
+      # Print info about the current shell.
+    $ typex 
+    BINARY:     /bin/bash  [GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin14)]
+
+      # Print info about utility 'awk' and its symlink chain:
+    $ typex awk  
+    BINARY:     /usr/bin/awk@ -> /etc/alternatives/awk -> /usr/bin/gawk [GNU Awk 4.0.1]
+
+      # Print information about command forms named 'printf' in order of 
+      # precedence:
+    $ typex printf
+    BUILTIN:    printf
+    BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8.21]
+
+      # Print information about script 'npm':
+    $ typex -p npm
+    SCRIPT:     /usr/local/bin/npm  (node script)  [2.1.7]
+
+      # Print information about executables 'nawk' and 'mawk':
+    $ typex -p nawk mawk
+    BINARY:     /usr/bin/nawk@ -> /etc/alternatives/nawk@ -> /usr/bin/gawk  [GNU Awk 4.0.1]
+    BINARY:     /usr/bin/mawk  [2014-03-24]
+
+      # Define an alias and print information about it.
+    $ alias lsx='ls -FAhl'; typex lsx
+    ALIAS:      lsx='ls -FAhl'
+      BINARY:     /bin/ls  [ls (GNU coreutils) 8.21]
+
+      # Print extended information about a filesystem object:
+    $ typex -v '/User Guides And Information'
+    DIRECTORY:  /User Guides And Information@ -> /Library/Documentation/User Guides and Information.localized
+      lrwxr-xr-x  1 root  wheel    60B Jul  2  2012 
+      drwxrwxr-x@ 9 root  admin   306B Oct 16  2014     
+  
+EOF_MAN_PAGE

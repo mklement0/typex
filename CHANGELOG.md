@@ -4,6 +4,17 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.4.0](https://github.com/mklement0/typex/compare/v0.3.3...v0.4.0)** (2015-09-21):
+  * [potentially breaking change] `typex` now accepts options _after_ operands
+      as well (except after `--`), and now also accepts long option names.
+  * [doc] `typex` now has a man page (if manually installed, use `typex --man`);
+      `typex -h` now just prints concise usage information.
+  * [doc] Read-me improved.
+  * [fix] Various fixes and stability improvements.
+  * [dev] Installation of sourcing (with `-i`) no longer uses `ed` so as to
+      work on a wider range of platforms, notably Fedora.
+  * [dev] Tests improved, additional tests added.
+
 * **[v0.3.3](https://github.com/mklement0/typex/compare/v0.3.2...v0.3.3)** (2015-09-15):
   * [dev] Makefile improvements; various other behind-the-scenes tweaks.
 

@@ -1,8 +1,8 @@
 
 * Fix the following scenario to truly report all intermediary targets
 
-/Users/mklement/bin/fls@ -> /Users/mklement/lib/node_modules/fls/bin/fls
-/Users/mklement/lib/node_modules/fls@ -> /Users/mklement/Documents/Projects/OSS/fls
+        /Users/mklement/bin/fls@ -> /Users/mklement/lib/node_modules/fls/bin/fls
+        /Users/mklement/lib/node_modules/fls@ -> /Users/mklement/Documents/Projects/OSS/fls
 
 That is, the symlink points to file inside a symlinked *directory*.
 Currently, we only report the start- and endpoints of such a chain.

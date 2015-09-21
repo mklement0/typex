@@ -2,4 +2,13 @@
 
 PATH="../../bin:$PATH"
 
-. typex while || exit
+# Helper function for error reporting.
+die() { (( $# > 0 )) && echo "ERROR: $*" >&2; exit 1; }
+
+shell=$(ps -o comm= $$)
+
+. typex || die "Failed to source in $shell without arguments."
+
+. typex -p typex || die "Failed to source in $shell with arguments."
+
+exit 0

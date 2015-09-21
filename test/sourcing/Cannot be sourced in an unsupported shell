@@ -2,6 +2,12 @@
 
 PATH="../../bin:$PATH"
 
-. typex while && exit 1  # sourcing should FAIL, because sourcing in /bin/sh is not supported.
+# Helper function for error reporting.
+die() { (( $# > 0 )) && echo "ERROR: $*" >&2; exit 1; }
+
+shell=$(ps -o comm= $$)
+
+. typex && die "Argument-less sourcing in unsupported shell succeeded unexpectedly: $shell"
+. typex -p typex && die "Sourcing with arguments in unsupported shell succeeded unexpectedly: shell"
 
 exit 0

@@ -16,11 +16,14 @@ PATH=${PWD%%/test*}/bin:$PATH
 # Helper function for error reporting.
 die() { (( $# > 0 )) && echo "ERROR: $*" >&2; exit 1; }
 
-# Test both direct-invocation and sourced scenarios.
-cmds=( 'typex --version' '. typex --version' )
-
+# Test both direct-invocation and sourced scenarios, as well as option combinations and placing options after operands
+cmds=( 
+  "typex -v" ". typex -v" 
+  "typex -vp" ". typex -vp" 
+  "typex typex -vp" ". typex -vp typex" 
+)
 for cmd in "${cmds[@]}"; do
-  eval "$cmd" | grep -Ew 'v?[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+' || die "No major.minor.patch version number detected in the output."
+  eval "$cmd" || die "Failed unexpectedly: '$cmd'."
 done
 
 exit 0

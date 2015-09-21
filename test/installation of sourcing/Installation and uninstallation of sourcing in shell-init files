@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+# ---
+# IMPORTANT: Use the following statement at the TOP OF EVERY TEST SCRIPT
+#            to ensure that this package's 'bin/' subfolder is added to the path so that
+#            this package's CLIs can be invoked by their mere filename in the rest
+#            of the script.
+# ---
+PATH=${PWD%%/test*}/bin:$PATH
+
+# Execute your tests as shell commands below. 
+# An exit code of zero signals success, any other code signals an error
+# and causes this test to fail.
+# See https://github.com/tlevine/urchin.
+
+# Helper function for error reporting.
+die() { (( $# > 0 )) && echo "ERROR: $*" >&2; exit 1; }
+
+# Create a temp. DIR
+tmpDir=$(mktemp -d -t XXXX) # Works on both OSX and Linux; note: dir. name will have random extension on OSX (e.g., '.../XXXX.bJViLcM3') and none on Linux (e.g., '.../vXDA')
+
+# Copy the sample files from the fixtures to the temp. dir
+(shopt -s dotglob; cp ../.fixtures/init-files/* "$tmpDir/") || die
+
+# ------ INSTALLATION 
+
+# Run the installer
+TYPEX_TEST_INITFILE_DIR="$tmpDir" TYPEX_TEST_ALL_INITFILES=1 typex -i || die
+
+# Determine the substring to find on a line in each file that identifies
+# the sourcing command.
+idString=". $typexPath"
+
+# Determine the set of files to check:
+files=( .kshrc .zshrc )
+if [[ $(uname) == 'Darwin' ]]; then
+  files+=( .bash_profile )
+else
+  files+=( .bashrc )
+fi
+
+typexPath=$(which typex)
+
+# Make sure a sourcing command is now present in the files.
+for f in "${files[@]}"; do
+  grep -Fq "$idString" "$tmpDir/$f" || die "Sourcing line unexpectedly not found in '$f'."
+done
+
+# ------ UNINSTALLATION
+
+TYPEX_TEST_INITFILE_DIR="$tmpDir" TYPEX_TEST_ALL_INITFILES=1 typex -u || die
+
+# Make sure a sourcing command is now NO LONGER present in the files.
+for f in "${files[@]}"; do
+  grep -Fq "$idString" "$tmpDir/$f" && die "Sourcing line unexpectedly still found in '$f'."
+done
+
+# Clean up temp. dir.
+[[ -d "$tmpDir" ]] && rm -rf "$tmpDir"
+
+exit 0

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-echo "[$PWD]" >&2
-
 # ---
 # IMPORTANT: Use the following statement at the TOP OF EVERY TEST SCRIPT
 #            to ensure that this package's 'bin/' subfolder is added to the path and this
@@ -18,12 +16,19 @@ PATH=${PWD%%/test*}/bin:$PATH
 # Helper function for error reporting.
 die() { (( $# > 0 )) && echo "ERROR: $*" >&2; exit 1; }
 
-cli='make-pkg'
+cli='typex'
 errMsg="CLI name '$cli' not found in stdout output."
 
-for opt in '-h' '--help'; do
-  $cli -h | fgrep -qw "$cli" || die "Option $opt: $errMsg"
+# Test both direct-invocation and sourced scenarios.
+cmds=( "$cli --version" ". $cli --version" )
+
+
+for cmd in "${cmds[@]}"; do
+  for opt in '-h' '--help'; do
+    eval "$cmd" | fgrep -w "$cli" || die "Option $opt: $errMsg"
+  done
 done
+
 
 exit 0
 

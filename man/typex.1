@@ -1,0 +1,353 @@
+.TH "TYPEX" "1" "September 2015" "v0.4.0" ""
+.SH "NAME"
+\fBtypex\fR \- report salient information about commands, programs, and filesystem items
+.SH SYNOPSIS
+.P
+Reports salient information about available commands, programs, and
+.br
+filesystem items, such as command or file type, (ultimate) location,
+.br
+and version\.
+.P
+.RS 2
+.nf
+typex [\-p] [\-V] [\-v] [<nameOrPath>\.\.\.]
+
+\-p     look for files only (ignore shell aliases, keywords, functions,  
+       builtins)
+\-V     skip attempt to obtain executable version information
+\-v     verbose mode: report additional information
+.fi
+.RE
+.P
+Install / uninstall sourcing via shell\-initialization files (required
+.br
+to detect aliases, functions, shell builtins \- supported in
+.br
+Bash, Ksh, Zsh):
+.P
+.RS 2
+.nf
+typex \-i
+typex \-u
+.fi
+.RE
+.SH DESCRIPTION
+.P
+\fBtypex\fP combines and extends features found in the standard \fBtype\fP,
+.br
+\fBwhich\fP, and  \fBfile\fP utilities\.
+.P
+Not specying any operands prints information about the current shell\.
+.P
+When given a command name (as opposed to a filesystem path), the
+.br
+following command forms are recognized:  
+.RS 0
+.IP \(bu 2
+shell aliases, shell keywords, shell functions, shell builtins, and
+.br
+executable files in the \fB$PATH\fP
+
+.RE
+.P
+Alternatively, filesystem paths rather than mere (file)names may be
+.br
+given, in which case extended information about theses paths is
+.br
+reported\.
+.P
+NOTE: For this utility to detect shell\-based command forms, it must be
+.br
+\fIsourced\fR, which is supported in the following shells:
+.br
+\fBbash\fP, \fBksh\fP, and \fBzsh\fP  
+.P
+Sourcing this utility in your shell's per\-user initialization file will
+.br
+define a function of the same name that will be available in interactive
+.br
+sessions:
+.RS 0
+.IP \(bu 2
+\fBtypex \-i\fP installs this sourcing for all supported shells\.
+.IP \(bu 2
+\fBtypex \-u\fP uninstalls it\.
+
+.RE
+.P
+Alternatively, you can source and invoke at the same time; e\.g\.:
+.P
+.RS 2
+.nf
+\|\. typex read
+.fi
+.RE
+.P
+If you instead invoke this utility directly (as a script):
+.RS 0
+.IP \(bu 2
+only executable \fIfiles\fR and filesystem items will be detected \-
+.br
+no other command forms;
+.IP \(bu 2
+a warning to that effect is printed, unless only filesystem paths are
+.br
+supplied; suppress it with \fB\-p\fP\|\.
+
+.RE
+.P
+Unless you specify a filesystem path, ALL defined
+.br
+forms of a given command name are reported, in order of precedence
+.br
+(highest first; if this utility is invoked directly or \fB\-p\fP is specified,
+.br
+only executable \fIfiles\fR with that name are reported):
+.RS 0
+.IP \(bu 2
+\fBbash\fP, \fBzsh\fP:
+.br
+ alias > shell keyword > shell function > builtin > executable
+.IP \(bu 2
+\fBksh\fP
+.br
+ shell keyword > alias > shell function > builtin > executable
+
+.RE
+.P
+The exit code is \fB0\fP if all operands were found, the number of
+.br
+non\-existent operands otherwise\.
+.P
+Note: \fBtypex\fP is designed for interactive use, to provide humans with
+.br
+concise, salient information about a command or filesystem object\.
+.br
+As such, its output is geared toward readability by humans,
+.br
+and should not be relied on for programmatic parsing\.
+.SH OPTIONS
+.RS 0
+.IP \(bu 2
+\fB\-p\fP, \fB\-\-files\-only\fP
+.br
+Only looks for (executable) \fIfiles\fR (ignores aliases, keywords,
+.br
+functions, and builtins)\.
+.br
+This option applies implicity if a given operand is a filesystem path
+.br
+rather than a mere command name\.
+.IP \(bu 2
+\fB\-V\fP, \fB\-\-skip\-version\fP
+.br
+Suppresses the attempt to obtain version information from executable
+.br
+files\. Helpful if you know that the target file doesn't support
+.br
+\fB\-\-version, or you're wary of what invocation with\fP\-\-version`
+.br
+might do\.
+.IP \(bu 2
+\fB\-v\fP, \fB\-\-verbose\fP
+.br
+Verbose mode: prints additional information \- see below\.
+.IP \(bu 2
+\fB\-i\fP, \fB\-\-install\-sourcing\fP
+.br
+Updates the user\-specific shell\-initialization files of all supported
+.br
+shells, if present, to include a command to source this utility,
+.br
+which is the prerequisite for it to be able to detect shell\-based
+.br
+definitions, namely shell aliases, keywords, functions,
+.br
+and builtins\.
+.IP \(bu 2
+\fB\-u\fP, \fB\-\-uninstall\-sourcing\fP
+.br
+Removes a previously installed sourcing command from the
+.br
+user\-specific initialization files of supported shells\.
+
+.RE
+.SH OUTPUT FORMAT
+.P
+All output starts with a capitalized headword identifying the command
+.br
+form / path type, as in the headings below\.
+.br
+Output for each command form is single\-line, except for the optional
+.br
+information added by \fB\-v\fP; the latter is indented with 2 spaces\.  
+.SS ALIAS
+.P
+Prints the shell alias's definition\. If the first token of the alias's
+.br
+definition is itself a command, information about that command is
+.br
+printed as well, in indented form, potentially recursively\.
+.br
+No attempt is made to detect additional commands inside the alias
+.br
+definition\.
+.br
+\fB\-v\fP is never applied to the recursive calls\.
+.SS KEYWORD
+.P
+A shell\-language keyword, such as \fBwhile\fP; the name is printed\.
+.SS FUNCTION
+.P
+Prints the shell function name, followed by \fB()\fP; e\.g\., \fBfoo()\fP\|\.
+.br
+In Bash, if the function is also exported, \fB# \-x\fP is appended\.
+.P
+With \fB\-v\fP specified:
+.br
+The function definition (its source code) is printed, too\.
+.SS BUILTIN
+.P
+Prints the shell builtin's name\.
+.SS BINARY / SCRIPT / DIRECTORY / FILE
+.P
+Prints files' full path, and, in the case of symlinks, the entire
+.br
+symlink chain to the ultimate target file, using full paths\.
+.P
+If the file is not itself a symlink, but has symlink components
+.br
+(directories) in its directory path, both the full form of the input
+.br
+path as well as the canonical path with all symlinks resolved are
+.br
+printed\.
+.P
+If the file is an executable script, interpreter information is
+.br
+appended in parentheses; e\.g\., \fB(bash script)\fP\|\.
+.br
+If the file is non\-executable, file\-type information obtained with
+.br
+\fBfile\fP is appended in parentheses; e\.g\., \fB(ASCII text)\fP\|\.
+.br
+If the file is a special file such as \fB/dev/null\fP, its type is also
+.br
+appended in parentheses; e\.g\., \fB(character special)\fP\|\.
+.P
+For executable files, unless \fB\-V\fP is specified, an attempt is made
+.br
+to obtain version information through invocation with \fB\-\-version\fP\|\.
+.br
+If \fB\-V\fP was specified, or if no version information was found, the
+.br
+last\-modified timestamp of the (ultimate target) file is used\.
+.br
+Whatever information is available is appended in square brackets; e\.g\.,
+.br
+\fB[ls (GNU coreutils) 8\.21]\fP or \fB[2014\-09\-09]\fP
+.P
+With \fB\-v\fP specified:
+.RS 0
+.IP \(bu 2
+File statistics (permissions, owner, \.\.\.) are printed using \fBls \-l\fP\|\.
+.IP \(bu 2
+For symlinks, this happens for every file in the symlink chain\.
+
+.RE
+.P
+Additional information printed for executables:
+.RS 0
+.IP \(bu 2
+binaries: file\-type information obtained with \fBfile\fP\|\.
+.IP \(bu 2
+scripts: the shebang line\.
+
+.RE
+.SH STANDARD OPTIONS
+.P
+All standard options provide information only\.
+.RS 0
+.IP \(bu 2
+\fB\-h, \-\-help\fP
+.br
+Prints the contents of the synopsis chapter to stdout for quick reference\.
+.IP \(bu 2
+\fB\-\-man\fP
+.br
+Displays this manual page, which is a helpful alternative to using
+.br
+\fBman\fP, if the manual page isn't installed\.
+.IP \(bu 2
+\fB\-\-version\fP
+.br
+Prints version information\.
+.IP \(bu 2
+\fB\-\-home\fP
+.br
+Opens this utility's home page in the system's default web browser\.
+
+.RE
+.SH COMPATIBILITY
+.P
+Platforms supported in principle:
+.RS 0
+.IP \(bu 2
+OSX, Linux, BSD (with Bash installed)
+
+.RE
+.P
+On those, sourcing the script (recommmended) works in the following
+.br
+shells:
+.RS 0
+.IP \(bu 2
+Bash, Ksh, Zsh
+
+.RE
+.SH LICENSE
+.P
+For license information, bug reports, and more, visit this utility's
+.br
+home page by running \fBtypex \-\-home\fP
+.SH EXAMPLES
+.P
+.RS 2
+.nf
+  # Print info about the current shell\.
+$ typex 
+BINARY:     /bin/bash  [GNU bash, version 3\.2\.57(1)\-release (x86_64\-apple\-darwin14)]
+
+  # Print info about utility 'awk' and its symlink chain:
+$ typex awk  
+BINARY:     /usr/bin/awk@ \-> /etc/alternatives/awk \-> /usr/bin/gawk [GNU Awk 4\.0\.1]
+
+  # Print information about command forms named 'printf' in order of 
+  # precedence:
+$ typex printf
+BUILTIN:    printf
+BINARY:     /usr/bin/printf  [printf (GNU coreutils) 8\.21]
+
+  # Print information about script 'npm':
+$ typex \-p npm
+SCRIPT:     /usr/local/bin/npm  (node script)  [2\.1\.7]
+
+  # Print information about executables 'nawk' and 'mawk':
+$ typex \-p nawk mawk
+BINARY:     /usr/bin/nawk@ \-> /etc/alternatives/nawk@ \-> /usr/bin/gawk  [GNU Awk 4\.0\.1]
+BINARY:     /usr/bin/mawk  [2014\-03\-24]
+
+  # Define an alias and print information about it\.
+$ alias lsx='ls \-FAhl'; typex lsx
+ALIAS:      lsx='ls \-FAhl'
+  BINARY:     /bin/ls  [ls (GNU coreutils) 8\.21]
+
+  # Print extended information about a filesystem object:
+$ typex \-v '/User Guides And Information'
+DIRECTORY:  /User Guides And Information@ \-> /Library/Documentation/User Guides and Information\.localized
+  lrwxr\-xr\-x  1 root  wheel    60B Jul  2  2012 
+  drwxrwxr\-x@ 9 root  admin   306B Oct 16  2014     
+.fi
+.RE
+
