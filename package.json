@@ -2,7 +2,7 @@
   "name": "typex",
   "description": "Unix CLI that provides salient information about installed commands, programs, and filesystem items, combining elements from standard Unix utilities type, which, and file.",
   "private": false,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "os": [
     "darwin",
     "linux"

@@ -1,5 +1,5 @@
 
-* Fix the following scenario to truly report all intermediary targets
+* Improve the following scenario to truly report all intermediate targets
 
         /Users/mklement/bin/fls@ -> /Users/mklement/lib/node_modules/fls/bin/fls
         /Users/mklement/lib/node_modules/fls@ -> /Users/mklement/Documents/Projects/OSS/fls

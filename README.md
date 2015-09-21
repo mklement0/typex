@@ -187,6 +187,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.4.1](https://github.com/mklement0/typex/compare/v0.4.0...v0.4.1)** (2015-09-21):
+  * [fix] `typex /` now works correctly.
+
 * **[v0.4.0](https://github.com/mklement0/typex/compare/v0.3.3...v0.4.0)** (2015-09-21):
   * [potentially breaking change] `typex` now accepts options _after_ operands
       as well (except after `--`), and now also accepts long option names.

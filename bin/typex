@@ -109,6 +109,7 @@ function typex  # !! Note the non-POSIX function syntax to ensure that ksh varia
         cd "$(dirname -- "$target")" # note: cd "" is the same as cd . - i.e., a no-op.
         targetDir=$PWD
         targetName=$(basename -- "$target")
+        [[ $targetName == '/' ]] && targetName='' # !! curiously, `basename /` reports `\`
         done=0
         if [[ ! -L $targetName ]]; then
             # We've found the ultimate target (or the input file wasn't a symlink to begin with).
@@ -749,7 +750,7 @@ else # This script is NOT being sourced; either handle standard options such as 
 
   kTHIS_NAME=${BASH_SOURCE##*/}
   kTHIS_HOMEPAGE='https://github.com/mklement0/typex'
-  kTHIS_VERSION='v0.4.0' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+  kTHIS_VERSION='v0.4.1' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
 
   # --- Begin: STANDARD HELPER FUNCTIONS
 
