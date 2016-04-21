@@ -2,4 +2,16 @@
 
 PATH="../../bin:$PATH"
 
-. typex read | egrep -q '^BUILTIN:'
+# Regex that matches the expected result.
+resultRegex='^BUILTIN:'
+
+# !! FIX FOR zsh 5.0.8, THE VERSION STILL CURRENT AS OF OSX 10.11.1:
+# !! Incredibly, the '%-<n>s' format for LEFT-aligning inside a fixed-width
+# !! string is broken in 5.0.8, causing typex's output not to start at the 
+# !! first column. We simply WORK AROUND the issue here, by permitting leading
+# !! whitespace.
+if [[ $ZSH_VERSION == '5.0.8' ]]; then
+  resultRegex=${resultRegex/#^/^ *}
+fi
+
+. typex read | egrep -q "$resultRegex" || exit

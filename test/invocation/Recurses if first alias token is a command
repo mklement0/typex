@@ -2,8 +2,24 @@
 
 PATH="../../bin:$PATH"
 
-unset -f ls
-unalias ls
-alias lsx='ls -FAhl'
+unset -f ls &>/dev/null
+unalias ls  &>/dev/null
 
-. typex lsx | grep -Eq $'^ALIAS:\n^  BINARY:'
+alias lsx='ls -FAhl'  
+
+# Regexes that matches the expected result.
+resultRegexes=( '^ALIAS:' '^  BINARY' )
+
+# !! FIX FOR zsh 5.0.8, THE VERSION STILL CURRENT AS OF OSX 10.11.1:
+# !! Incredibly, the '%-<n>s' format for LEFT-aligning inside a fixed-width
+# !! string is broken in zsh 5.0.8, causing typex's output not to start at the 
+# !! first column. We simply WORK AROUND the issue here, by permitting leading
+# !! whitespace.
+if [[ $ZSH_VERSION == '5.0.8' ]]; then
+  resultRegexes=( "${resultRegexes[@]//^/^ *}" )
+fi
+
+# Look for ALL defined regexes (must be done individually, because grep applies OR logic to multiple search terms).
+for resultRegex in "${resultRegexes[@]}"; do
+  . typex lsx | grep -q "$resultRegex" || exit
+done
