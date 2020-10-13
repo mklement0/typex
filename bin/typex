@@ -797,7 +797,7 @@ else # This script is NOT being sourced; either handle standard options such as 
 
   kTHIS_NAME=${BASH_SOURCE##*/}
   kTHIS_HOMEPAGE='https://github.com/mklement0/typex'
-  kTHIS_VERSION='v0.4.2' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+  kTHIS_VERSION='v0.4.3' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
 
   # --- Begin: STANDARD HELPER FUNCTIONS
 

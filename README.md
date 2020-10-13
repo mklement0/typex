@@ -187,6 +187,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
 
+* **[v0.4.3](https://github.com/mklement0/typex/compare/v0.4.2...v0.4.3)** (2020-10-13):
+  * [fix] npm v6.14.8 inexplicably complains about the "install" command in package.json (which simply printfs an informational message), so it is diabled for now.
+
 * **[v0.4.2](https://github.com/mklement0/typex/compare/v0.4.1...v0.4.2)** (2020-10-13):
   * [fix] Syntax error fixed that was masked by an accidental non-breaking space Unicode char.
 
