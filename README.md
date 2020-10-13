@@ -159,7 +159,7 @@ Bash, Ksh, Zsh):
 
 # License
 
-Copyright (c) 2015 Michael Klement <mklement0@gmail.com> (http://same2u.net), released under the [MIT license](https://spdx.org/licenses/MIT#licenseText).
+Copyright (c) 2015-2020 Michael Klement <mklement0@gmail.com> (http://same2u.net), released under the [MIT license](https://spdx.org/licenses/MIT#licenseText).
 
 ## Acknowledgements
 
@@ -186,6 +186,9 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- NOTE: An entry template is automatically added each time `make version` is called. Fill in changes afterwards. -->
+
+* **[v0.4.2](https://github.com/mklement0/typex/compare/v0.4.1...v0.4.2)** (2020-10-13):
+  * [fix] Syntax error fixed that was masked by an accidental non-breaking space Unicode char.
 
 * **[v0.4.1](https://github.com/mklement0/typex/compare/v0.4.0...v0.4.1)** (2015-09-21):
   * [fix] `typex /` now works correctly.

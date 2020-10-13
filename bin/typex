@@ -768,7 +768,7 @@ EOF
 #  - Either the script is being invoked *directly* (and, due to its shebang line, run by *bash*) or the script filenname was passed to a shell executable.
 #    Either way, the invoking shell's aliases and functions won't be visible.
 
-if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && [[ $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then  # script is being SOURCED
+if [[ -n $ZSH_EVAL_CONTEXT && $ZSH_EVAL_CONTEXT =~ :file$ ]] || [[ -n $KSH_VERSION && $(cd "$(dirname -- "$0")" && printf '%s' "${PWD%/}/")$(basename -- "$0") != ${.sh.file} ]] || [[ -n $BASH_VERSION && $0 != $BASH_SOURCE ]]; then  # script is being SOURCED
 
   if (( $# > 0 )); then # This script is being sourced *and* invoked with arguments at the same time - useful for ad-hoc sourcing, such as when using typex in a script or when running something like `shall -c '. ./typex ...'. typex() remains defined as a - desirable - side effect.
 
@@ -797,7 +797,7 @@ else # This script is NOT being sourced; either handle standard options such as 
 
   kTHIS_NAME=${BASH_SOURCE##*/}
   kTHIS_HOMEPAGE='https://github.com/mklement0/typex'
-  kTHIS_VERSION='v0.4.1' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+  kTHIS_VERSION='v0.4.2' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
 
   # --- Begin: STANDARD HELPER FUNCTIONS
 
